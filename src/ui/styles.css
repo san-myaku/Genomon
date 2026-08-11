@@ -1,0 +1,1963 @@
+/*
+ * ゲノモン — デザイントークンと共通スタイル（正本）
+ *
+ * 【世界観】標本帳・植物研究室・温室・木の家具・真鍮の器具・淡い紙・やわらかい光。
+ *   暗く不気味な実験施設にはしない。基本は明るい紙のテーマ。
+ *
+ * 【最優先】ゲノモンが画面の主役。UI は観察を邪魔しない。
+ *   パネル・ボタンがゲノモンに重ならないよう、育成室は「舞台」と「操作卓」を分離する。
+ *
+ * 【レスポンシブ方針】
+ *   PC  … 左サイドナビ + 本文（グリッド）
+ *   スマホ … 上ヘッダ + 本文 + 下タブバー（縦持ち基本）
+ *   横方向にははみ出さない。グリッド/フレックスの子は必ず min-width:0 を持たせる。
+ *
+ * 【配色の出典】artsample/index.html（淡い紙 #fdf4e6・丸いカード・やわらかい影・暖色の見出し）
+ */
+
+/* ═════════════════════════════════════════════════════════
+   1. デザイントークン
+   ═════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 紙と面 ── */
+  --paper: #fdf4e6;
+  --paper-dot: #ffe3c2;
+  --surface: #fffdf8;
+  --surface-2: #fdf6ea;
+  --surface-sunk: #f6ead6;
+
+  /* ── 線 ── */
+  --line: #f0dcc0;
+  --line-strong: #e6c9a2;
+
+  /* ── 文字 ── */
+  --ink: #5a463c;
+  --ink-soft: #8a705f;
+  --ink-faint: #a89283;
+  --head: #7a4a1e;
+
+  /* ── アクセント（暖色・真鍮・葉） ── */
+  --accent: #ff9f6b;
+  --accent-deep: #e07a45;
+  --accent-soft: #ffe4d2;
+  --brass: #c2953f;
+  --brass-soft: #f3e4c2;
+  --leaf: #6aa84f;
+  --leaf-soft: #e2f0d8;
+
+  /* ── 状態色 ── */
+  --good: #5f9e4a;
+  --mid: #d9a12c;
+  --bad: #d0654f;
+  --info: #4f8bb0;
+
+  /* ── ヘッダ（真鍮の帯） ── */
+  --bar-from: #ffd9a8;
+  --bar-to: #ffc98a;
+  --bar-edge: #e6a85c;
+  --bar-ink: #7a4a1e;
+
+  /* ── 希少度 ── */
+  --rar-common: #9d8a7c;
+  --rar-uncommon: #4f8bb0;
+  --rar-rare: #8d6bc0;
+  --rar-precious: #c2953f;
+
+  /* ── 影 ── */
+  --shadow-1: 0 2px 6px rgba(190, 140, 90, .12);
+  --shadow-2: 0 4px 14px rgba(190, 140, 90, .16);
+  --shadow-3: 0 10px 30px rgba(140, 100, 60, .22);
+
+  /* ── 半径 ── */
+  --r-s: 10px;
+  --r-m: 16px;
+  --r-l: 22px;
+  --r-pill: 999px;
+
+  /* ── 余白 ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* ── 寸法 ── */
+  --tap: 44px;          /* タップ対象の最小サイズ */
+  --nav-w: 216px;       /* PC の左サイドナビ幅 */
+  --tabbar-h: 62px;     /* スマホの下タブバー高さ */
+  --header-h: 56px;
+
+  /* ── フォーカス ── */
+  --focus: #2f7fbf;
+
+  /* ── モーション ── */
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
+  --ease: cubic-bezier(.22, .68, .32, 1.02);
+
+  color-scheme: light;
+}
+
+/* ── ダークテーマ（夜の温室）──
+   OS 設定に追従。設定画面のトグルは data-theme を root に立てて上書きする。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #221d26;
+    --paper-dot: #33293a;
+    --surface: #2d2634;
+    --surface-2: #352d3d;
+    --surface-sunk: #251f2c;
+    --line: #43384e;
+    --line-strong: #574964;
+    --ink: #efe4e6;
+    --ink-soft: #bda9bb;
+    --ink-faint: #97869a;
+    --head: #f5c78d;
+    --accent: #ff9f6b;
+    --accent-deep: #d1703f;
+    --accent-soft: #4a3630;
+    --brass: #dcb45f;
+    --brass-soft: #453a2a;
+    --leaf: #86c06a;
+    --leaf-soft: #2d3a28;
+    --good: #7cc060;
+    --mid: #e0b143;
+    --bad: #e0806a;
+    --info: #6fb0d6;
+    --bar-from: #4b3a52;
+    --bar-to: #3d2f45;
+    --bar-edge: #624f6b;
+    --bar-ink: #f6d6a8;
+    --rar-common: #a3949a;
+    --rar-uncommon: #6fb0d6;
+    --rar-rare: #b193e0;
+    --rar-precious: #e6c46f;
+    --shadow-1: 0 2px 6px rgba(0, 0, 0, .34);
+    --shadow-2: 0 4px 14px rgba(0, 0, 0, .4);
+    --shadow-3: 0 10px 30px rgba(0, 0, 0, .5);
+    --focus: #7cc0f0;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #221d26;
+  --paper-dot: #33293a;
+  --surface: #2d2634;
+  --surface-2: #352d3d;
+  --surface-sunk: #251f2c;
+  --line: #43384e;
+  --line-strong: #574964;
+  --ink: #efe4e6;
+  --ink-soft: #bda9bb;
+  --ink-faint: #97869a;
+  --head: #f5c78d;
+  --accent: #ff9f6b;
+  --accent-deep: #d1703f;
+  --accent-soft: #4a3630;
+  --brass: #dcb45f;
+  --brass-soft: #453a2a;
+  --leaf: #86c06a;
+  --leaf-soft: #2d3a28;
+  --good: #7cc060;
+  --mid: #e0b143;
+  --bad: #e0806a;
+  --info: #6fb0d6;
+  --bar-from: #4b3a52;
+  --bar-to: #3d2f45;
+  --bar-edge: #624f6b;
+  --bar-ink: #f6d6a8;
+  --rar-common: #a3949a;
+  --rar-uncommon: #6fb0d6;
+  --rar-rare: #b193e0;
+  --rar-precious: #e6c46f;
+  --shadow-1: 0 2px 6px rgba(0, 0, 0, .34);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, .4);
+  --shadow-3: 0 10px 30px rgba(0, 0, 0, .5);
+  --focus: #7cc0f0;
+  color-scheme: dark;
+}
+
+/* ═════════════════════════════════════════════════════════
+   2. リセットと下地
+   ═════════════════════════════════════════════════════════ */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+/* display を持つ部品（.nav は flex）に hidden 属性が効くようにする。
+   これが無いとタイトル画面でナビが消えない。 */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* 横スクロールは発生させない設計だが、万一のはみ出しでレイアウトが崩れないよう最後の網を張る */
+  overflow-x: clip;
+}
+
+body {
+  font-family: 'Hiragino Maru Gothic ProN', 'Zen Maru Gothic', 'Yu Gothic UI', 'Meiryo',
+    'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--paper-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+img, svg { max-width: 100%; }
+
+h1, h2, h3, h4 {
+  margin: 0;
+  color: var(--head);
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+p { margin: 0; }
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* フォーカスリングは絶対に消さない（アクセシビリティ要件） */
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* キーボード利用者向けのスキップリンク */
+.skip-link {
+  position: absolute;
+  left: var(--sp-3);
+  top: -80px;
+  z-index: 200;
+  background: var(--surface);
+  color: var(--head);
+  border: 2px solid var(--accent-deep);
+  border-radius: var(--r-s);
+  padding: 10px 16px;
+  font-weight: 800;
+  transition: top var(--dur) var(--ease);
+}
+.skip-link:focus { top: var(--sp-3); }
+
+/* ── UI アイコン（手描き線画）──────────────────────────
+ *
+ * 絵文字をやめて `src/ui/icons.ts` の線画に置き換えた（生きものと画風を揃える）。
+ * 寸法は `icon()` が em で出すので、置き場所の font-size がそのまま効く。
+ * 既存のアイコン枠（.nav__ico / .care__ico / .empty__ico …）は
+ * もともと font-size で大きさを決めていたので、そちらは触らなくてよい。
+ *
+ * `vertical-align` は文字と並べたとき（ゲージ見出し・ピル・値段）に
+ * ベースラインへ落ちて下がって見えるのを持ち上げるための調整。 */
+.ico {
+  display: inline-block;
+  vertical-align: -0.15em;
+  flex: 0 0 auto;
+  /* 線が背景に沈まないよう、細い線でも色は文字色そのままを使う。 */
+  color: inherit;
+}
+/* 【block にしてはいけない】
+ * 一度 `.empty__ico .ico { display:block }` にしたら、空状態のアイコンが
+ * 中央ではなく **左端** に出た。親が text-align:center で中央寄せしているのに、
+ * ブロック箱は幅いっぱいに広がって寄せが効かなくなるため。
+ * inline-block のままなら、親の中央寄せがそのまま効く。 */
+
+/* ═════════════════════════════════════════════════════════
+   3. アプリシェル
+   ═════════════════════════════════════════════════════════ */
+
+#app { min-height: 100%; }
+
+.shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: 100%;
+}
+
+.shell__body {
+  display: grid;
+  grid-template-columns: 100%;
+  min-width: 0;
+}
+
+.shell__main {
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-4)
+           calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom));
+}
+
+.shell__main > * { min-width: 0; }
+
+/* タイトルなど、ヘッダ・ナビを出さない画面。
+   ナビを hidden にしてもグリッドの列は残るので、列指定ごと 1 列に戻す。
+   （PC 幅の `.shell__body { grid-template-columns: var(--nav-w) … }` に勝つ必要があるので
+     `.shell.shell--bare` で詳細度を上げてある） */
+.shell__main--bare { padding: 0 !important; }
+.shell.shell--bare { grid-template-rows: 1fr; }
+.shell.shell--bare .shell__body { grid-template-columns: minmax(0, 1fr); }
+.shell.shell--bare .shell__main { max-width: none; }
+
+/* ── ヘッダ ── */
+.hdr {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: linear-gradient(var(--bar-from), var(--bar-to));
+  border-bottom: 3px solid var(--bar-edge);
+  color: var(--bar-ink);
+  padding: var(--sp-2) var(--sp-3) var(--sp-2);
+  padding-top: calc(var(--sp-2) + env(safe-area-inset-top));
+}
+
+.hdr__top {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hdr__brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 育成室へ戻るリンクなので、他のボタンと同じタップ判定を確保する
+     （E2E のタップ対象検査で 79x27 と検出されたため）。 */
+  min-height: var(--tap);
+  padding-inline: 2px;
+  font-weight: 800;
+  font-size: 1.02rem;
+  letter-spacing: .03em;
+  color: var(--bar-ink);
+  text-decoration: none;
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hdr__brand:hover { text-decoration: none; }
+
+.hdr__spacer { flex: 1 1 auto; min-width: 0; }
+
+.hdr__stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, .62);
+  border: 1.5px solid var(--bar-edge);
+  border-radius: var(--r-pill);
+  padding: 3px 11px;
+  font-size: .86rem;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--bar-ink);
+}
+:root[data-theme='dark'] .chip,
+[data-theme='dark'] .chip { background: rgba(255, 255, 255, .1); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .chip { background: rgba(255, 255, 255, .1); }
+}
+
+.chip--save { font-size: .8rem; min-width: 0; }
+.chip--save[data-state='saving'] { opacity: .75; }
+.chip--save[data-state='error'] {
+  background: var(--bad);
+  color: #fff;
+  border-color: var(--bad);
+}
+.chip--dev { background: var(--brass); color: #3a2c10; border-color: #8f6d22; }
+
+/* ── 次の目標バー（常時表示・ゲームの中核ガイド）── */
+.objective {
+  margin-top: var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-m);
+  padding: 7px 8px 7px 12px;
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+}
+
+.objective__icon { flex: 0 0 auto; font-size: 1.05rem; line-height: 1; }
+
+.objective__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.objective__go { flex: 0 0 auto; }
+
+/* ═════════════════════════════════════════════════════════
+   4. ナビゲーション
+   ═════════════════════════════════════════════════════════ */
+
+/* スマホ：下タブバー */
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  display: flex;
+  background: var(--surface);
+  border-top: 2px solid var(--line-strong);
+  box-shadow: 0 -3px 12px rgba(140, 100, 60, .12);
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+
+.nav__item {
+  flex: 1 0 auto;
+  min-width: 62px;
+  min-height: var(--tabbar-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 4px 2px;
+  position: relative;
+}
+
+.nav__ico { font-size: 1.28rem; line-height: 1.1; }
+
+.nav__item[aria-current='page'] {
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+}
+.nav__item[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 18%;
+  right: 18%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent-deep);
+}
+
+.nav__item[data-locked='1'] { color: var(--ink-faint); opacity: .72; }
+.nav__lock { position: absolute; top: 6px; right: calc(50% - 22px); font-size: .68rem; }
+
+/* PC：左サイドナビ */
+@media (min-width: 900px) {
+  .shell__body {
+    grid-template-columns: var(--nav-w) minmax(0, 1fr);
+    align-items: start;
+  }
+  .shell__main {
+    padding: var(--sp-5) var(--sp-5) var(--sp-6);
+    max-width: 1180px;
+  }
+  .nav {
+    position: sticky;
+    top: calc(var(--header-h) + 46px);
+    bottom: auto;
+    left: auto;
+    right: auto;
+    flex-direction: column;
+    border-top: 0;
+    border-right: 2px solid var(--line-strong);
+    box-shadow: none;
+    background: transparent;
+    padding: var(--sp-4) var(--sp-2) var(--sp-5);
+    gap: 3px;
+    overflow: visible;
+    align-self: start;
+  }
+  .nav__item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--sp-3);
+    min-height: var(--tap);
+    width: 100%;
+    border-radius: var(--r-m);
+    font-size: .95rem;
+    padding: 8px 12px;
+  }
+  .nav__item[aria-current='page']::after { display: none; }
+  .nav__item[aria-current='page'] {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent-deep);
+  }
+  .nav__lock { position: static; margin-left: auto; }
+  .hdr { padding-left: var(--sp-5); padding-right: var(--sp-5); }
+}
+
+/* ═════════════════════════════════════════════════════════
+   5. ボタン
+   ═════════════════════════════════════════════════════════ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 9px 20px;
+  border: 2px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: .98rem;
+  line-height: 1.25;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--accent-deep);
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+  text-decoration: none;
+  text-align: center;
+}
+.btn:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-deep); }
+
+.btn[disabled],
+.btn[aria-disabled='true'] {
+  background: var(--surface-sunk);
+  color: var(--ink-faint);
+  box-shadow: 0 3px 0 var(--line-strong);
+  cursor: not-allowed;
+}
+
+.btn--ghost {
+  background: var(--surface);
+  color: var(--head);
+  border-color: var(--line-strong);
+  box-shadow: 0 3px 0 var(--line-strong);
+}
+.btn--ghost:hover { background: var(--surface-2); }
+
+.btn--leaf { background: var(--leaf); box-shadow: 0 3px 0 #4c7d38; }
+.btn--leaf:hover { background: color-mix(in srgb, var(--leaf) 88%, #fff); }
+
+.btn--danger { background: var(--bad); box-shadow: 0 3px 0 #a44a37; }
+.btn--danger:hover { background: color-mix(in srgb, var(--bad) 88%, #fff); }
+
+/* 「手放す」。取り返しがつかない操作なので、目立たせすぎず・見落とさせもしない中間の見た目。
+   実際の破壊は確認ダイアログを通す。 */
+.btn--release { color: var(--bad); border-color: var(--bad); box-shadow: 0 3px 0 var(--bad); }
+.btn--release:hover { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+
+/* 小さいボタンでもタップ対象は 44px を割らない（指示書のアクセシビリティ要件）。
+   見た目だけ詰めたいので、高さは保ったまま余白と文字を小さくする。 */
+.btn--sm { min-height: var(--tap); padding: 4px 14px; font-size: .86rem; }
+.btn--wide { width: 100%; }
+.btn--lg { font-size: 1.1rem; padding: 14px 30px; min-height: 54px; }
+
+/* ヘッダ内の小さい丸ボタン（タップ 44px を確保） */
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--bar-edge);
+  background: rgba(255, 255, 255, .5);
+  color: var(--bar-ink);
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+.iconbtn:hover { background: rgba(255, 255, 255, .8); }
+
+/* ═════════════════════════════════════════════════════════
+   6. カード・見出し・レイアウト部品
+   ═════════════════════════════════════════════════════════ */
+
+.card {
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: var(--r-l);
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-4);
+  min-width: 0;
+}
+
+.card--sunk { background: var(--surface-2); box-shadow: none; }
+.card--tight { padding: var(--sp-3); }
+
+.section { margin: 0 0 var(--sp-5); }
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.section__title {
+  font-size: 1.1rem;
+  color: var(--head);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.section__note {
+  font-size: .85rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin: 0 0 var(--sp-3);
+  overflow-wrap: anywhere;
+}
+
+.page-title {
+  font-size: 1.32rem;
+  margin: 0 0 var(--sp-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-lead {
+  font-size: .92rem;
+  color: var(--ink-soft);
+  margin: 0 0 var(--sp-4);
+  overflow-wrap: anywhere;
+}
+
+.stack { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.stack--s { gap: var(--sp-2); }
+.row { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; min-width: 0; }
+.row--end { justify-content: flex-end; }
+.grow { flex: 1 1 auto; min-width: 0; }
+
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--r-pill);
+  padding: 2px 10px;
+  font-size: .78rem;
+  font-weight: 800;
+  background: var(--surface-sunk);
+  color: var(--ink-soft);
+  border: 1.5px solid var(--line);
+  white-space: nowrap;
+}
+.pill--leaf { background: var(--leaf-soft); color: var(--leaf); border-color: var(--leaf); }
+.pill--brass { background: var(--brass-soft); color: var(--brass); border-color: var(--brass); }
+.pill--accent { background: var(--accent-soft); color: var(--accent-deep); border-color: var(--accent-deep); }
+.pill--notable { background: var(--brass-soft); color: #8a6712; border-color: var(--brass); }
+
+.rar { border-width: 1.5px; border-style: solid; }
+.rar--common { color: var(--rar-common); border-color: var(--rar-common); background: transparent; }
+.rar--uncommon { color: var(--rar-uncommon); border-color: var(--rar-uncommon); background: transparent; }
+.rar--rare { color: var(--rar-rare); border-color: var(--rar-rare); background: transparent; }
+.rar--precious { color: var(--rar-precious); border-color: var(--rar-precious); background: var(--brass-soft); }
+
+.empty {
+  text-align: center;
+  color: var(--ink-soft);
+  padding: var(--sp-5) var(--sp-3);
+  font-size: .93rem;
+  line-height: 1.8;
+}
+.empty__ico { font-size: 2rem; display: block; margin-bottom: var(--sp-2); }
+
+/* 「今後解放」の案内。ダミーボタンの代わりに条件を明示する。 */
+.locked {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  background: var(--surface-2);
+  border: 2px dashed var(--line-strong);
+  border-radius: var(--r-m);
+  padding: var(--sp-3);
+  color: var(--ink-soft);
+  font-size: .9rem;
+  line-height: 1.65;
+  min-width: 0;
+}
+.locked__ico { font-size: 1.4rem; flex: 0 0 auto; }
+.locked__body { min-width: 0; overflow-wrap: anywhere; }
+.locked__title { font-weight: 800; color: var(--head); display: block; }
+
+/* ═════════════════════════════════════════════════════════
+   7. ゲージ
+   ═════════════════════════════════════════════════════════ */
+
+.gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: var(--sp-2) var(--sp-3);
+  min-width: 0;
+}
+
+.gauge { min-width: 0; }
+
+.gauge__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 2px;
+}
+.gauge__val { font-variant-numeric: tabular-nums; color: var(--ink); }
+
+.gauge__track {
+  height: 11px;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunk);
+  border: 1.5px solid var(--line);
+  overflow: hidden;
+}
+
+.gauge__fill {
+  /* <i> は既定でインライン。display:block を付けないと width/height が効かず、
+     ゲージが「空の枠」に見えてしまう。 */
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--good);
+  transition: width var(--dur-slow) var(--ease), background-color var(--dur) var(--ease);
+}
+.gauge__fill[data-level='mid'] { background: var(--mid); }
+.gauge__fill[data-level='low'] { background: var(--bad); }
+
+.gauge--big .gauge__track { height: 15px; }
+.gauge--big .gauge__head { font-size: .9rem; }
+
+/* ═════════════════════════════════════════════════════════
+   8. ゲノモンの舞台（育成室の主役エリア）
+   ═════════════════════════════════════════════════════════ */
+
+.stage {
+  position: relative;
+  border-radius: var(--r-l);
+  border: 2px solid var(--line);
+  background:
+    radial-gradient(ellipse 70% 52% at 50% 96%, rgba(140, 100, 60, .12), transparent 70%),
+    radial-gradient(ellipse 120% 80% at 50% 6%, rgba(255, 244, 214, .9), transparent 62%),
+    var(--surface);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* 温室のガラス越しの光 */
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, rgba(255, 255, 255, .34) 0 12%, transparent 12% 26%,
+    rgba(255, 255, 255, .2) 26% 33%, transparent 33%);
+  pointer-events: none;
+  opacity: .55;
+}
+/* 暗いテーマでは白い帯が強く出すぎるので薄める（夜のガラスの映り込みくらいに）。 */
+:root[data-theme='dark'] .stage::before { opacity: .16; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .stage::before { opacity: .16; }
+}
+
+.stage__art {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 46dvh;
+  margin: 0 auto;
+}
+.stage__art > svg { width: 100%; height: 100%; display: block; }
+
+@media (min-width: 900px) {
+  .stage__art { max-height: 52dvh; aspect-ratio: 4 / 3; }
+}
+
+/* 個体詳細の舞台。すぐ下の「親子の 比べっこ」まで最初の画面に入るよう、少し抑える。 */
+.stage--detail .stage__art { max-height: min(34dvh, 320px); }
+
+/* 育成室の装飾（購入した設備が背景に足される） */
+.decor {
+  position: absolute;
+  pointer-events: none;
+  font-size: 2rem;
+  line-height: 1;
+  opacity: .92;
+  filter: drop-shadow(0 2px 3px rgba(120, 80, 50, .22));
+}
+.decor--lamp { top: 8%; right: 7%; font-size: 2.1rem; }
+.decor--lamp::after {
+  content: '';
+  position: absolute;
+  inset: -60px -60px -30px -60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 214, 150, .5), transparent 68%);
+  z-index: -1;
+}
+.decor--shelf { bottom: 6%; left: 4%; font-size: 1.9rem; }
+.decor--planter { bottom: 5%; right: 5%; font-size: 2.2rem; }
+.decor--mist { top: 12%; left: 6%; font-size: 1.7rem; opacity: .7; }
+.decor--incubator { bottom: 4%; left: 42%; font-size: 1.7rem; opacity: .78; }
+
+/* 名札 */
+.stage__tag {
+  position: absolute;
+  top: var(--sp-3);
+  left: var(--sp-3);
+  right: var(--sp-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+
+.nameplate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  padding: 3px 12px;
+  font-weight: 800;
+  color: var(--head);
+  box-shadow: var(--shadow-1);
+  font-size: .92rem;
+  max-width: 100%;
+  min-width: 0;
+}
+.nameplate span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 吹き出し */
+.speech {
+  position: absolute;
+  left: 50%;
+  top: 12%;
+  transform: translateX(-50%);
+  max-width: min(84%, 320px);
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-m);
+  padding: 8px 14px;
+  font-weight: 700;
+  font-size: .95rem;
+  color: var(--ink);
+  box-shadow: var(--shadow-2);
+  z-index: 6;
+  text-align: center;
+  overflow-wrap: anywhere;
+  animation: speech-in var(--dur) var(--ease) both;
+}
+.speech::after {
+  content: '';
+  position: absolute;
+  bottom: -11px;
+  left: 50%;
+  margin-left: -9px;
+  border: 9px solid transparent;
+  border-top-color: var(--line-strong);
+}
+.speech[data-reaction='delighted'] { border-color: var(--accent-deep); color: var(--accent-deep); }
+.speech[data-reaction='delighted']::after { border-top-color: var(--accent-deep); }
+.speech[data-reaction='dislike'] { border-color: var(--bad); }
+.speech[data-reaction='dislike']::after { border-top-color: var(--bad); }
+.speech[data-reaction='sleepy'] { border-color: var(--info); }
+.speech[data-reaction='sleepy']::after { border-top-color: var(--info); }
+
+@keyframes speech-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px) scale(.94); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+/* ═════════════════════════════════════════════════════════
+   9. 演出（UI 所有ぶん）
+   ═════════════════════════════════════════════════════════
+
+   ゲノモン本体の待機モーション（浮遊・傾ぎ・呼吸・まばたき）と
+   世話の反応アニメーションは render/anim.ts が個体ごとの keyframes を
+   注入して担当する。ここで重複定義すると二重掛けになるので書かない。
+   ここに置くのは「UI の演出」だけ：卵の揺れ・孵化の閃光・粒子・紙吹雪。   */
+
+/* 卵の揺れ・孵化 */
+.egg-wobble { animation: egg-wobble 780ms var(--ease) 1; transform-origin: 50% 92%; }
+@keyframes egg-wobble {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(-7deg); }
+  38% { transform: rotate(6deg); }
+  60% { transform: rotate(-4deg); }
+  82% { transform: rotate(2deg); }
+}
+
+.hatch-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 55%, #fff 0%, rgba(255, 240, 200, .85) 30%, transparent 68%);
+  animation: hatch-flash 1200ms var(--ease) forwards;
+  z-index: 8;
+}
+@keyframes hatch-flash {
+  0% { opacity: 0; transform: scale(.4); }
+  25% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+/* 粒子（卵選択・世話・コイン獲得） */
+.sparkles { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 7; }
+.sparkle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--brass);
+  opacity: 0;
+  animation: sparkle-pop 760ms var(--ease) forwards;
+}
+@keyframes sparkle-pop {
+  0% { opacity: 0; transform: translate(0, 0) scale(.4); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx, 0), var(--dy, -40px)) scale(1.1); }
+}
+
+/* 孵化・成体化の「前 → 後」。
+   姿がどう変わったかを見せる札。操作は妨げないので pointer-events は無効にし、
+   数秒で自分から消える（孵化は時間でも起きるため、手を止めさせない）。 */
+.evolve {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  pointer-events: none;
+}
+
+.evolve__card {
+  background: var(--surface);
+  border: 3px solid var(--brass);
+  border-radius: var(--r-l);
+  box-shadow: var(--shadow-3);
+  padding: var(--sp-4) var(--sp-5);
+  text-align: center;
+  max-width: min(100%, 400px);
+  animation: evolve-in 520ms var(--ease) both, evolve-out 480ms var(--ease) 3720ms both;
+}
+
+.evolve__title {
+  font-weight: 900;
+  color: var(--head);
+  font-size: 1.02rem;
+  margin-bottom: var(--sp-3);
+  overflow-wrap: anywhere;
+}
+
+.evolve__pair { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); }
+.evolve__col { display: grid; gap: 4px; justify-items: center; }
+
+.evolve__art {
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--r-m);
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  overflow: hidden;
+}
+.evolve__art svg { width: 100%; height: 100%; display: block; }
+.evolve__art--new { border-color: var(--brass); box-shadow: 0 0 0 4px var(--brass-soft); }
+
+.evolve__cap { font-size: .76rem; font-weight: 800; color: var(--ink-soft); }
+.evolve__arrow { font-size: 1.4rem; font-weight: 900; color: var(--accent-deep); }
+
+@keyframes evolve-in {
+  from { opacity: 0; transform: scale(.82) translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes evolve-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* 紙吹雪（展示会） */
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 120; overflow: hidden; }
+.confetti i {
+  position: absolute;
+  top: -24px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: .95;
+  animation: confetti-fall var(--t, 2600ms) linear forwards;
+}
+@keyframes confetti-fall {
+  0% { transform: translateY(-10px) rotate(0); opacity: 1; }
+  100% { transform: translateY(105dvh) rotate(760deg); opacity: .9; }
+}
+
+/* ═════════════════════════════════════════════════════════
+   9-b. 育成室のレイアウト
+   ═════════════════════════════════════════════════════════
+
+   【解決したい問題】
+   舞台を大きく取った結果、初期表示で世話ボタンが 1 つも見えなかった
+   （実測：PC 1280×860 で top=844px、スマホ 393×851 で top=809px＝下タブバーの裏）。
+   目標行が「世話して 孵しましょう」と言う以上、その手段は最初から画面上に要る。
+
+   【方針】
+   スマホ … 操作卓を下部に貼り付け（sticky）、舞台は上に残す。
+            「なでる → 反応を見る」が 1 画面で成立することを最優先する。
+   PC    … 舞台と操作卓を 2 列に並べる。どちらもファーストビューに入る。          */
+
+.nursery {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'sw'
+    'view'
+    'ctrl'
+    'info';
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.nursery > .switcher { grid-area: sw; }
+.nursery__view { grid-area: view; min-width: 0; }
+.nursery__ctrl { grid-area: ctrl; min-width: 0; }
+
+.nursery__info {
+  grid-area: info;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* 操作卓。スマホでは下タブバーのすぐ上に貼り付いて、常に押せる状態を保つ。
+   ゲージ類（info）はこの下に置き、必要なときだけスクロールして見る。 */
+.nursery__ctrl {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 6px);
+  z-index: 25;
+}
+
+.care-panel { padding: 10px; box-shadow: var(--shadow-3); }
+.care-panel .section__title { font-size: 1rem; }
+.care-panel__note { margin: var(--sp-2) 0 0; font-size: .72rem; line-height: 1.5; }
+
+/* スマホでは見出しの行ぶんの高さが惜しい。読み上げには残して、表示だけ畳む。 */
+@media (max-width: 899px) {
+  .care-panel__head {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    margin: -1px;
+    white-space: nowrap;
+  }
+}
+
+/* 舞台の高さは nursery.ts が実測して入れる（操作卓と重ならない最大値）。
+   ここに書くのは JS が動かなかったときの控えめな既定値。
+   個体詳細など他の画面の .stage には影響させない。 */
+.nursery .stage__art { max-height: min(26dvh, 300px); }
+
+@media (min-width: 900px) {
+  .nursery {
+    grid-template-columns: minmax(0, 1.05fr) minmax(310px, .95fr);
+    grid-template-areas:
+      'sw   sw'
+      'view ctrl'
+      'info ctrl';
+    align-items: start;
+    gap: var(--sp-4);
+  }
+  .nursery__ctrl { position: sticky; top: var(--sp-4); bottom: auto; }
+  .nursery .stage__art { max-height: min(46dvh, 430px); aspect-ratio: 4 / 3; }
+  .care-panel { padding: var(--sp-4); box-shadow: var(--shadow-1); }
+  .care-panel__head { margin-bottom: var(--sp-2); }
+  .care-panel__note { font-size: .8rem; }
+}
+
+/* ── 効き目メーター（押しどきの可視化）──
+   効果倍率は「直前の世話からの経過時間」に比例する。連打しても総量は増えないので、
+   「あと何秒で全開か」を数字で見せて、待つ価値をその場で分かるようにする。 */
+.care-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 4px 12px;
+  min-width: 0;
+}
+
+.care-meter__k {
+  font-size: .76rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.care-meter__bar {
+  flex: 1 1 80px;
+  min-width: 56px;
+  height: 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunk);
+  border: 1.5px solid var(--line);
+  overflow: hidden;
+}
+.care-meter__bar i {
+  display: block;
+  height: 100%;
+  background: var(--good);
+  transition: width var(--dur) var(--ease);
+}
+.care-meter__bar i[data-level='mid'] { background: var(--mid); }
+.care-meter__bar i[data-level='low'] { background: var(--bad); }
+
+.care-meter__v {
+  font-size: .78rem;
+  font-weight: 800;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}
+
+.care-meter__eta {
+  font-size: .78rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.care-meter__eta[data-ready='1'] { color: var(--leaf); }
+
+/* ═════════════════════════════════════════════════════════
+   10. 世話ボタン（操作卓）
+   ═════════════════════════════════════════════════════════ */
+
+.care {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.care__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  /* クールダウン理由（「あと 8 秒 まってください」など）が 2 行入っても
+     文字が切れない高さ。効き目メーターぶんの下余白も確保する。 */
+  min-height: 96px;
+  padding: 8px 5px 14px;
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-m);
+  background: var(--surface);
+  color: var(--head);
+  font-weight: 800;
+  font-size: .84rem;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--line-strong);
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+.care__btn:hover:not([disabled]) { background: var(--accent-soft); }
+.care__btn:active:not([disabled]) { transform: translateY(3px); box-shadow: 0 0 0 var(--line-strong); }
+
+.care__ico { font-size: 1.5rem; line-height: 1.1; }
+.care__label { line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+
+.care__note {
+  font-size: .66rem;
+  font-weight: 700;
+  color: var(--mid);
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+/* 理由文は差分更新のために空でも要素を置いてある。空のときは場所を取らせない。 */
+.care__note:empty { display: none; }
+.care__btn[disabled] { opacity: .55; cursor: not-allowed; box-shadow: 0 3px 0 var(--line); }
+.care__btn[disabled] .care__note { color: var(--ink-faint); }
+
+/* 効き目メーター（飽き・満足の視覚化） */
+.care__eff {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 4px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.care__eff i {
+  display: block;
+  height: 100%;
+  background: var(--leaf);
+  transition: width var(--dur) var(--ease);
+}
+.care__eff i[data-level='mid'] { background: var(--mid); }
+.care__eff i[data-level='low'] { background: var(--bad); }
+
+/* スマホでは操作卓の高さがそのまま舞台の大きさを削るので、
+   押しやすさ（44px 以上）を保ったまま詰める。 */
+@media (max-width: 899px) {
+  .care { gap: 6px; }
+  .care__btn { min-height: 84px; padding: 6px 4px 11px; font-size: .8rem; }
+  .care__ico { font-size: 1.3rem; }
+  .care__note { font-size: .62rem; }
+}
+
+/* ═════════════════════════════════════════════════════════
+   11. 個体の切り替えタブ・カード
+   ═════════════════════════════════════════════════════════ */
+
+.switcher {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  scrollbar-width: thin;
+  min-width: 0;
+}
+
+.switcher__btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: var(--tap);
+  padding: 5px 13px 5px 6px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 800;
+  font-size: .87rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.switcher__btn[aria-pressed='true'] {
+  border-color: var(--accent-deep);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.switcher__thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-sunk);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.switcher__thumb svg { width: 100%; height: 100%; }
+
+/* 個体カード（標本帳・展示会・交配の選択） */
+.ccard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: var(--r-m);
+  padding: 8px;
+  text-align: center;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+  transition: transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.ccard:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+.ccard[aria-pressed='true'] { border-color: var(--accent-deep); background: var(--accent-soft); }
+
+.ccard__art {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: var(--surface-2);
+  border-radius: var(--r-s);
+  overflow: hidden;
+}
+.ccard__art svg { width: 100%; height: 100%; display: block; }
+
+.ccard__name {
+  font-weight: 800;
+  font-size: .87rem;
+  color: var(--head);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+/* 森へ かえした子の札。もう育てられないので押せない（＝行き止まりを作らない）。
+   押せないことが見た目で分かるよう、破線で少し沈ませる。 */
+.ccard--released {
+  cursor: default;
+  border-style: dashed;
+  background: var(--surface-2);
+}
+.ccard--released:hover { transform: none; border-color: var(--line); }
+.ccard--released .ccard__art { opacity: .92; }
+
+.ccard__meta { font-size: .74rem; color: var(--ink-soft); line-height: 1.4; }
+.ccard__pills { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; }
+
+/* ═════════════════════════════════════════════════════════
+   12. 卵選択
+   ═════════════════════════════════════════════════════════ */
+
+.eggs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  min-width: 0;
+}
+@media (min-width: 700px) { .eggs { gap: var(--sp-3); } }
+/* PC では 3×3 が一目で見渡せるよう、卵が大きくなりすぎない幅に抑えて中央に置く。 */
+@media (min-width: 900px) { .eggs { max-width: 640px; margin-inline: auto; } }
+
+.egg {
+  position: relative;
+  border: 2px solid var(--line);
+  border-radius: var(--r-m);
+  background: var(--surface);
+  padding: 6px 4px 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+  transition: transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.egg:hover { transform: translateY(-3px); }
+.egg__art { width: 100%; aspect-ratio: 3 / 4; }
+.egg__art svg { width: 100%; height: 100%; display: block; }
+.egg__cap { font-size: .74rem; color: var(--ink-soft); font-weight: 700; text-align: center; }
+
+.egg[aria-pressed='true'] {
+  border-color: var(--accent-deep);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 34%, transparent), var(--shadow-2);
+}
+.egg[aria-pressed='true'] .egg__cap { color: var(--accent-deep); }
+
+.egg__num {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-deep);
+  color: #fff;
+  font-weight: 800;
+  font-size: .82rem;
+  box-shadow: var(--shadow-1);
+}
+.egg:not([aria-pressed='true']) .egg__num { display: none; }
+
+.egg__check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 1.05rem;
+  color: var(--accent-deep);
+}
+.egg:not([aria-pressed='true']) .egg__check { display: none; }
+
+.egg--picked { animation: egg-pick 460ms var(--ease) 1; }
+@keyframes egg-pick {
+  0% { transform: scale(1) rotate(0); }
+  25% { transform: scale(1.09) rotate(-3deg); }
+  55% { transform: scale(.97) rotate(2deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* 確定バー（画面下に固定・スマホでもタブバーの上に出す） */
+.confirmbar {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-l);
+  box-shadow: var(--shadow-3);
+  padding: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-4);
+  min-width: 0;
+}
+@media (min-width: 900px) { .confirmbar { bottom: var(--sp-4); } }
+.confirmbar__text { flex: 1 1 auto; min-width: 0; font-weight: 800; color: var(--head); font-size: .95rem; }
+
+/* 狭い画面では「0 / 3 えらびました」「えらび直す」「これで はじめる」が
+   1 行に収まらず、3 つとも 2 行に折り返して窮屈になっていた。
+   案内を上の行に逃がし、ボタンは横幅を分け合って 1 行に収める。 */
+@media (max-width: 520px) {
+  .confirmbar { flex-wrap: wrap; row-gap: 6px; padding: var(--sp-2); }
+  .confirmbar__text { flex: 1 0 100%; text-align: center; font-size: .88rem; line-height: 1.35; }
+  .confirmbar .btn { flex: 1 1 0; min-width: 0; padding-inline: 8px; white-space: nowrap; }
+}
+
+/* ═════════════════════════════════════════════════════════
+   13. 特徴リスト・親子比較
+   ═════════════════════════════════════════════════════════ */
+
+.traits { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: var(--sp-2); }
+
+.trait {
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-s);
+  padding: 6px 10px;
+  min-width: 0;
+}
+.trait__k { font-size: .74rem; color: var(--ink-soft); font-weight: 700; }
+.trait__v { font-size: .95rem; font-weight: 800; color: var(--ink); overflow-wrap: anywhere; }
+.trait__c { font-size: .72rem; color: var(--ink-faint); overflow-wrap: anywhere; }
+.trait--notable { border-color: var(--brass); background: var(--brass-soft); }
+.trait--hidden { border-style: dashed; color: var(--ink-faint); }
+.trait--hidden .trait__v { color: var(--ink-faint); font-weight: 700; }
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  align-items: start;
+  min-width: 0;
+}
+.compare__col { text-align: center; min-width: 0; }
+.compare__art {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-m);
+  overflow: hidden;
+}
+.compare__art svg { width: 100%; height: 100%; }
+.compare__lbl { font-size: .78rem; font-weight: 800; color: var(--ink-soft); margin-top: 3px; overflow-wrap: anywhere; }
+.compare__mid { display: grid; place-items: center; }
+
+/* 姿をたどれない親の枠。空欄にすると列ごと消えたように見えるので、
+   「ここに親がいた」ことが分かる形で残す。 */
+.compare__art--gone {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  background: var(--surface-sunk);
+  font-size: 1.8rem;
+  opacity: .8;
+}
+.compare__tag {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+/* 必要条件のチェックリスト（交配）。
+   canBreed は 1 つずつしか理由を返さないので、UI 側で全部並べて出す。 */
+.cond { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.cond__row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: .8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.cond__row[data-ok='1'] { color: var(--leaf); }
+.cond__row[data-ok='0'] { color: var(--bad); font-weight: 700; }
+.cond__mark { flex: 0 0 auto; font-weight: 900; }
+
+/* 値段を併記するボタン（交配の 80 コインなど）。押してから減るのでは事後報告になる。 */
+.btn--cost { flex-direction: column; gap: 0; padding: 6px 18px; }
+.btn__cost { font-size: .76rem; font-variant-numeric: tabular-nums; opacity: .95; }
+
+/* 完了したことを示すカード（交配の成功など）。 */
+.card--done { border-color: var(--leaf); background: var(--leaf-soft); }
+
+.lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.lines li {
+  font-size: .88rem;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--surface-2);
+  border-left: 4px solid var(--leaf);
+  border-radius: 0 var(--r-s) var(--r-s) 0;
+  padding: 5px 10px;
+  overflow-wrap: anywhere;
+}
+
+/* 性格レーダー代わりのバー */
+.persona { display: grid; gap: 5px; }
+.persona__row { display: grid; grid-template-columns: minmax(72px, 88px) minmax(0, 1fr) minmax(72px, 88px); gap: 6px; align-items: center; font-size: .76rem; color: var(--ink-soft); }
+.persona__bar { height: 9px; border-radius: var(--r-pill); background: var(--surface-sunk); border: 1.5px solid var(--line); position: relative; }
+.persona__dot { position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); transform: translate(-50%, -50%); box-shadow: var(--shadow-1); }
+.persona__l { text-align: right; }
+
+/* ═════════════════════════════════════════════════════════
+   14. ショップ
+   ═════════════════════════════════════════════════════════ */
+
+.shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3); }
+
+.item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: var(--r-m);
+  padding: var(--sp-3);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+  align-content: start;
+}
+.item__ico {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--r-s);
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+}
+.item__main { min-width: 0; }
+/* 中身は span。ブロック化しないと 名前・効果・説明が 1 行に連なって読めなくなる。 */
+.item__name,
+.item__eff,
+.item__desc { display: block; }
+.item__name { font-weight: 800; color: var(--head); font-size: .98rem; overflow-wrap: anywhere; }
+.item__eff { font-size: .82rem; color: var(--leaf); font-weight: 800; overflow-wrap: anywhere; margin-top: 2px; }
+.item__desc { font-size: .82rem; color: var(--ink-soft); line-height: 1.55; overflow-wrap: anywhere; margin-top: 2px; }
+.item__foot { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.item__price { font-weight: 800; color: var(--brass); font-size: 1rem; white-space: nowrap; }
+.item--owned { border-color: var(--leaf); background: var(--leaf-soft); }
+
+.inv { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-2); }
+.inv__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-s);
+  padding: 6px 8px;
+  min-width: 0;
+}
+.inv__name { flex: 1 1 auto; min-width: 0; font-size: .86rem; font-weight: 700; overflow-wrap: anywhere; }
+/* 個数ピルと「使う」ボタンは縮ませない（縮むと文字が縦積みになって読めない）。 */
+.inv__row .pill,
+.inv__row .btn { flex: 0 0 auto; white-space: nowrap; }
+
+/* ═════════════════════════════════════════════════════════
+   15. 展示会
+   ═════════════════════════════════════════════════════════ */
+
+.exh-stage {
+  position: relative;
+  border-radius: var(--r-l);
+  border: 2px solid var(--line-strong);
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(194, 149, 63, .22), transparent 70%),
+    linear-gradient(180deg, var(--surface-2), var(--surface));
+  padding: var(--sp-4);
+  text-align: center;
+  overflow: hidden;
+  box-shadow: var(--shadow-2);
+  min-width: 0;
+}
+.exh-stage__art { width: min(100%, 340px); aspect-ratio: 1/1; margin: 0 auto; }
+.exh-stage__art svg { width: 100%; height: 100%; }
+
+/* 演出中の舞台。
+   等身大のままだと舞台だけで 460px ほど使い、
+   「項目別の評価」以降のカットが最初から全部フォールド下に出てしまう。
+   結果を読ませる画面なので、演出のあいだだけ主役に少し詰めてもらう。 */
+.exh-stage--show { padding: var(--sp-3); }
+.exh-stage--show .exh-stage__art { width: min(56%, 186px); }
+@media (min-width: 900px) {
+  .exh-stage--show .exh-stage__art { width: min(42%, 232px); }
+}
+
+/* スキップは画面下に貼り付ける（カットを追ってスクロールするため）。 */
+.exh-skip {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--sp-3) 0;
+  pointer-events: none;
+}
+.exh-skip .btn {
+  pointer-events: auto;
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+}
+@media (min-width: 900px) { .exh-skip { bottom: var(--sp-4); } }
+
+/* 最後のカットを画面の中央へ送るための、伸び縮みする末尾の余白。
+   高さは JS が必要な分だけ入れる（演出が終わると 0 に戻す）。 */
+.exh-tail { height: 0; }
+
+.exh-enter { animation: exh-enter 900ms var(--ease) both; }
+@keyframes exh-enter {
+  0% { opacity: 0; transform: translateY(40px) scale(.8); }
+  60% { opacity: 1; transform: translateY(-8px) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.judge-line {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: var(--r-m);
+  padding: var(--sp-3);
+  min-width: 0;
+}
+.judge-line__ava { font-size: 1.8rem; flex: 0 0 auto; }
+.judge-line__body { min-width: 0; }
+/* 中身は span なので、明示的にブロック化しないと 1 行に連なってしまう。 */
+.judge-line__name,
+.judge-line__title,
+.judge-line__say { display: block; }
+.judge-line__name { font-weight: 800; color: var(--head); font-size: .92rem; }
+.judge-line__title { font-size: .76rem; color: var(--ink-faint); }
+.judge-line__say { margin-top: 4px; font-size: .93rem; line-height: 1.65; overflow-wrap: anywhere; }
+
+.scores { display: grid; gap: var(--sp-2); }
+.score-row { display: grid; grid-template-columns: minmax(66px, 84px) minmax(0, 1fr) 46px; gap: var(--sp-2); align-items: center; }
+.score-row__k { font-size: .84rem; font-weight: 800; color: var(--ink-soft); }
+.score-row__v { font-size: .9rem; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.score-row__bar { height: 12px; border-radius: var(--r-pill); background: var(--surface-sunk); border: 1.5px solid var(--line); overflow: hidden; }
+.score-row__bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--brass)); width: 0; transition: width 700ms var(--ease); }
+
+.rank-badge {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 4px solid var(--brass);
+  background: var(--brass-soft);
+  color: var(--brass);
+  font-size: 2.8rem;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: var(--shadow-2);
+  animation: rank-pop 620ms var(--ease) both;
+}
+@keyframes rank-pop {
+  0% { opacity: 0; transform: scale(.3) rotate(-18deg); }
+  60% { opacity: 1; transform: scale(1.14) rotate(6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+.rank-badge[data-rank='S'] { border-color: #d4a02a; color: #b8860b; }
+.rank-badge[data-rank='D'] { border-color: var(--ink-faint); color: var(--ink-faint); background: var(--surface-2); }
+
+.coin-pop {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: var(--brass);
+  text-align: center;
+  animation: coin-pop 700ms var(--ease) both;
+}
+@keyframes coin-pop {
+  0% { opacity: 0; transform: translateY(14px) scale(.7); }
+  60% { opacity: 1; transform: translateY(-4px) scale(1.12); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.audience { display: flex; gap: 4px; justify-content: center; font-size: 1.4rem; flex-wrap: wrap; }
+.audience span { animation: audience-bob 1200ms ease-in-out infinite; }
+@keyframes audience-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+/* ═════════════════════════════════════════════════════════
+   16. ダイアログ・トースト
+   ═════════════════════════════════════════════════════════ */
+
+dialog.dlg {
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r-l);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-3);
+  padding: 0;
+  width: min(calc(100vw - 32px), 460px);
+  max-height: 84dvh;
+  overflow: auto;
+}
+dialog.dlg::backdrop { background: rgba(60, 40, 25, .42); backdrop-filter: blur(2px); }
+
+.dlg__in { padding: var(--sp-4); display: grid; gap: var(--sp-3); min-width: 0; }
+.dlg__title { font-size: 1.1rem; color: var(--head); display: flex; align-items: center; gap: 7px; }
+.dlg__body { font-size: .93rem; line-height: 1.7; color: var(--ink); overflow-wrap: anywhere; }
+.dlg__actions { display: flex; gap: var(--sp-2); justify-content: flex-end; flex-wrap: wrap; }
+
+/* スマホのトーストは下タブバーの上に出す。
+   以前は画面上部（top: 62px）に出していたが、そこは「次の目標」の行と完全に重なる。
+   孵化・機能解放・購入のたびにトーストが出るので、
+   **案内がいちばん必要な瞬間に案内が隠れる**という最悪の当たりかたをしていた。
+   ただし画面下部は世話パネル・卵の確定バーも使うので、
+   実際の高さは toast.ts が実測して入れ直す（ここは貼り付く相手が無いときの既定値）。 */
+.toasts {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+  z-index: 150;
+  display: grid;
+  gap: 6px;
+  width: min(calc(100vw - 24px), 420px);
+  pointer-events: none;
+}
+@media (min-width: 900px) {
+  .toasts { left: auto; right: var(--sp-4); transform: none; bottom: var(--sp-4); }
+}
+
+.toast {
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  border-left-width: 6px;
+  border-radius: var(--r-m);
+  box-shadow: var(--shadow-2);
+  padding: 9px 14px;
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--ink);
+  animation: toast-in var(--dur) var(--ease) both;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+}
+.toast--good { border-left-color: var(--leaf); }
+.toast--warn { border-left-color: var(--mid); }
+.toast--bad { border-left-color: var(--bad); }
+.toast--info { border-left-color: var(--info); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ═════════════════════════════════════════════════════════
+   17. 設定・フォーム
+   ═════════════════════════════════════════════════════════ */
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1.5px dashed var(--line);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.field:last-child { border-bottom: 0; }
+.field__label { flex: 1 1 160px; min-width: 0; font-weight: 700; font-size: .95rem; }
+.field__hint { font-size: .78rem; color: var(--ink-soft); font-weight: 400; display: block; line-height: 1.5; }
+.field__ctl { flex: 0 0 auto; display: flex; align-items: center; gap: var(--sp-2); }
+
+input[type='range'] {
+  width: min(200px, 46vw);
+  height: var(--tap);
+  accent-color: var(--accent-deep);
+  cursor: pointer;
+}
+
+.switch {
+  position: relative;
+  width: 58px;
+  height: var(--tap);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.switch::before {
+  content: '';
+  position: absolute;
+  inset: 8px 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunk);
+  border: 2px solid var(--line-strong);
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  transition: transform var(--dur) var(--ease);
+}
+.switch[aria-checked='true']::before { background: var(--leaf-soft); border-color: var(--leaf); }
+.switch[aria-checked='true']::after { transform: translateX(26px); border-color: var(--leaf); }
+
+.version-tap {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-s);
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: .84rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.io-area {
+  width: 100%;
+  min-height: 110px;
+  border: 2px solid var(--line);
+  border-radius: var(--r-s);
+  background: var(--surface-2);
+  padding: var(--sp-2);
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  color: var(--ink);
+}
+
+/* ═════════════════════════════════════════════════════════
+   18. タイトル画面
+   ═════════════════════════════════════════════════════════ */
+
+.title-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5) var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom));
+  text-align: center;
+}
+.title-inner { display: grid; gap: var(--sp-4); justify-items: center; max-width: 560px; width: 100%; min-width: 0; }
+
+.title-logo {
+  font-size: clamp(2.2rem, 11vw, 3.4rem);
+  font-weight: 900;
+  color: var(--head);
+  letter-spacing: .08em;
+  line-height: 1.1;
+  text-shadow: 0 3px 0 var(--surface), 0 5px 12px rgba(160, 110, 60, .25);
+}
+.title-sub { font-size: .98rem; color: var(--ink-soft); line-height: 1.7; }
+
+.title-art {
+  width: min(78%, 300px);
+  aspect-ratio: 1/1;
+  filter: drop-shadow(0 8px 14px rgba(150, 105, 60, .22));
+}
+.title-art svg { width: 100%; height: 100%; }
+
+.title-actions { display: grid; gap: var(--sp-2); width: min(100%, 320px); }
+
+/* ═════════════════════════════════════════════════════════
+   19. モーション軽減
+   ═════════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 設定の「モーション軽減」。OS 設定と同じ効果を明示操作でも得られるようにする。 */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+}
+:root[data-motion='reduced'] .confetti,
+:root[data-motion='reduced'] .sparkles { display: none !important; }
