@@ -41,12 +41,20 @@ function meetsCondition(state: GameState, feature: Feature): boolean {
         (!UNLOCK_RULES.breeding.requiresShop || state.unlocks.shop) &&
         adults >= UNLOCK_RULES.breeding.minAdults
       );
+    case 'breeder':
+      return (
+        state.stats.exhibitions >= UNLOCK_RULES.breeder.minExhibitions &&
+        state.stats.bred >= UNLOCK_RULES.breeder.minBred &&
+        adults >= UNLOCK_RULES.breeder.minAdults
+      );
+    case 'staff':
+      return state.stats.exhibitions >= UNLOCK_RULES.staff.minExhibitions;
     default:
       return false;
   }
 }
 
-const FEATURES: readonly Feature[] = ['nursery', 'collection', 'exhibition', 'shop', 'breeding'];
+const FEATURES: readonly Feature[] = ['nursery', 'collection', 'exhibition', 'shop', 'breeding', 'staff', 'breeder'];
 
 /**
  * 解放条件を再評価し、**新たに** 解放された機能 ID を返す。
@@ -58,8 +66,11 @@ export function refreshUnlocks(state: GameState): string[] {
     if (!state.unlocks[f] && meetsCondition(state, f)) {
       state.unlocks[f] = true;
       opened.push(f);
+      if (f === 'breeder') state.breeder.licensed = true;
     }
   }
+  // v5 より前のセーブや手動復元で、フラグと実体が片方だけ残っても矛盾させない。
+  if (state.unlocks.breeder) state.breeder.licensed = true;
   return opened;
 }
 
@@ -85,6 +96,13 @@ export function unlockHint(state: GameState, feature: Feature): string {
       if (state.unlocks.breeding) return '解放済みです。';
       if (!state.unlocks.shop) return `${UNLOCK_RULES.breeding.desc}（まず ショップを 解放しましょう）`;
       return `${UNLOCK_RULES.breeding.desc}（成体 ${adults} / ${UNLOCK_RULES.breeding.minAdults}）`;
+    case 'breeder':
+      if (state.unlocks.breeder) return '資格取得済みです。販売所を 利用できます。';
+      return `${UNLOCK_RULES.breeder.desc}（展示会 ${state.stats.exhibitions}/${UNLOCK_RULES.breeder.minExhibitions}・交配 ${state.stats.bred}/${UNLOCK_RULES.breeder.minBred}・成体 ${adults}/${UNLOCK_RULES.breeder.minAdults}）`;
+    case 'staff':
+      return state.unlocks.staff
+        ? '募集できます。候補者の プロフィールを 比べてください。'
+        : `${UNLOCK_RULES.staff.desc}（参加 ${state.stats.exhibitions} / ${UNLOCK_RULES.staff.minExhibitions}）`;
     default:
       return '';
   }
@@ -209,6 +227,37 @@ export function nextObjective(state: GameState): Objective {
         return { text: `交配の じゅんび: ${why.reason}`, screen, creatureId: adults[0].id };
       }
     }
+  }
+
+  // 公認資格は「交配を 1 回した後に展示会を 3 回」の順で案内する。
+  // 交配可能なときは上の具体的なペア案内を優先し、次の行動が無いときだけ
+  // 資格の残り条件を出すことで、目標が抽象的なチェックリストにならないようにする。
+  if (state.unlocks.breeding && !state.unlocks.breeder) {
+    if (
+      state.stats.bred >= UNLOCK_RULES.breeder.minBred &&
+      state.stats.exhibitions < UNLOCK_RULES.breeder.minExhibitions
+    ) {
+      return {
+        text: `公認ブリーダーまで、展示会が あと ${UNLOCK_RULES.breeder.minExhibitions - state.stats.exhibitions} 回です。`,
+        screen: 'exhibition',
+        creatureId: adults[0]?.id,
+      };
+    }
+    if (
+      state.stats.exhibitions >= UNLOCK_RULES.breeder.minExhibitions &&
+      state.stats.bred < UNLOCK_RULES.breeder.minBred
+    ) {
+      return {
+        text: '公認ブリーダーの資格に向けて、成体 2 体を 交配させましょう。',
+        screen: 'breeding',
+        creatureId: adults[0]?.id,
+      };
+    }
+  }
+
+  // 飼育員は、展示会 2 回を達成した直後に存在を知らせる。
+  if (state.unlocks.staff && state.staff.hiredId === null && state.staff.candidates.length === 0) {
+    return { text: '飼育員の 募集が はじまりました。候補者を 比べてみましょう。', screen: 'staff' };
   }
 
   // ── 7) まだ成体がいない：いちばん育っている子を育てる ──

@@ -232,7 +232,7 @@ describe('クールダウンの永続化', () => {
     const s = newGame('cooldown-breeding');
     const a = pushAdult(s, randomGenotype('cd-a'), T0);
     const b = pushAdult(s, randomGenotype('cd-b'), T0);
-    s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: true, collection: true };
+    s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: true, collection: true, breeder: false, staff: false };
     s.coins = 500;
 
     applyTick(s, T0 + 1000);

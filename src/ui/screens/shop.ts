@@ -37,6 +37,16 @@ const TARGET_LABEL: Readonly<Record<string, string>> = {
   adult: 'せいたいに 使う',
   any: 'どの子にも 使える',
   room: '育成室に 置く',
+  field: 'フィールドに 置く',
+};
+
+const FIELD_ITEM_ICON: Readonly<Record<string, string>> = {
+  log: 'fieldLog',
+  pond: 'fieldPond',
+  flowerbed: 'fieldFlowerbed',
+  shade: 'fieldShade',
+  food: 'fieldFood',
+  water: 'fieldWater',
 };
 
 export function screenShop(app: App, host: HTMLElement): Screen {
@@ -44,7 +54,7 @@ export function screenShop(app: App, host: HTMLElement): Screen {
     const afford = app.state.coins >= it.price;
     return (
       `<div class="item${owned ? ' item--owned' : ''}">` +
-      `<span class="item__ico" aria-hidden="true">${iconOrText(ITEM_ICON[it.kind] ?? 'box')}</span>` +
+      `<span class="item__ico" aria-hidden="true">${iconOrText((it.fieldObject && FIELD_ITEM_ICON[it.fieldObject]) || ITEM_ICON[it.kind] || 'box')}</span>` +
       `<span class="item__main">` +
       `<span class="item__name">${esc(it.name)}</span>` +
       `<span class="item__eff">${esc(it.effectText)}</span>` +
@@ -56,7 +66,7 @@ export function screenShop(app: App, host: HTMLElement): Screen {
       `<span class="grow"></span>` +
       `<span class="item__price">${icon('coin')} ${num(it.price)}</span>` +
       (owned
-        ? `<span class="pill pill--leaf">設置ずみ</span>`
+        ? `<span class="pill pill--leaf">${it.capacityIncrease ? '拡張ずみ' : '設置ずみ'}</span>`
         : `<button type="button" class="btn btn--sm" data-buy="${esc(it.id)}"${afford ? '' : ' disabled'}>` +
           `${afford ? '買う' : 'コイン不足'}</button>`) +
       `</span></div>`
@@ -108,9 +118,18 @@ export function screenShop(app: App, host: HTMLElement): Screen {
       : `<p class="section__note" style="margin-top:var(--sp-4)">` +
         `手持ちの 品：まだ 何も ありません。買った 消耗品は ここに たまります。</p>`;
 
+    const used = Object.fromEntries(
+      (['egg', 'juvenile', 'adult'] as const).map((stage) => [
+        stage,
+        app.state.creatures.filter((c) => c.life.stage === stage).length,
+      ]),
+    ) as Record<'egg' | 'juvenile' | 'adult', number>;
+    const capacityLead =
+      `所持コイン ${num(app.state.coins)} 枚 ／ 飼育枠 たまご ${used.egg}/${app.state.capacity.egg}・ようたい ${used.juvenile}/${app.state.capacity.juvenile}・せいたい ${used.adult}/${app.state.capacity.adult}`;
+
     setHtml(
       host,
-      pageHeader('ショップ', `いまの 所持コイン：${num(app.state.coins)} 枚`, 'pot') +
+      pageHeader('ショップ', capacityLead, 'pot') +
         invSection +
         section(
           '消耗品',
@@ -126,7 +145,7 @@ export function screenShop(app: App, host: HTMLElement): Screen {
             ? `<div class="shop">${permanents.map((i) => itemCard(i, false)).join('')}` +
               `${ownedItems.map((i) => itemCard(i, true)).join('')}</div>`
             : emptyState('vase', ['いまは 何も ありません。']),
-          '買うと ずっと 効きます。育成室の 見た目にも 出ます。',
+          '買うと ずっと 使えます。育成室や フィールドの 環境を 整えます。',
           'vase',
         ) +
         (locked.length > 0
@@ -137,7 +156,7 @@ export function screenShop(app: App, host: HTMLElement): Screen {
                   lockedNotice(
                     l.item.name,
                     `${l.item.effectText}｜${num(l.item.price)} コイン｜${l.hint}`,
-                    ITEM_ICON[l.item.kind] ?? 'box',
+                    (l.item.fieldObject && FIELD_ITEM_ICON[l.item.fieldObject]) || ITEM_ICON[l.item.kind] || 'box',
                   ),
                 )
                 .join(''),

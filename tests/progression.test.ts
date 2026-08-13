@@ -279,6 +279,8 @@ describe('通しプレイ', () => {
       shop: true,
       breeding: true,
       collection: true,
+      breeder: false,
+      staff: true,
     });
 
     // eslint-disable-next-line no-console
@@ -355,7 +357,7 @@ describe('詰みが起きないこと', () => {
     const s = newGame('capacity-breed');
     const a = pushAdult(s, 'breed-a', T0);
     const b = pushAdult(s, 'breed-b', T0);
-    s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: true, collection: true };
+    s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: true, collection: true, breeder: false, staff: false };
     s.coins = 500;
     s.capacity.egg = 1;
 
@@ -512,7 +514,7 @@ describe('人間らしい間欠的なプレイ', () => {
     // 2) 20 分後の時点で、交配できる個体が 2 体そろっている。
     expect(readyNow, '20 分 遊んでも交配条件を満たす 2 体がそろわない').toBeGreaterThanOrEqual(2);
     const pair = s.creatures.filter(readyForBreeding);
-    s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: true, collection: true };
+    s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: true, collection: true, breeder: false, staff: false };
     s.coins = BREEDING.costCoins;
     const canB = canBreed(s, pair[0]!.id, pair[1]!.id);
     expect(canB.ok, `交配できない: ${canB.reason}`).toBe(true);

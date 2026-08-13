@@ -152,8 +152,16 @@ export function buildPlant(ctx: DrawCtx): PartOut[] {
   const rng = ctx.rng('plant');
   const k = decorScale(ctx);
   const ox = ctx.pheno.asymmetry * rng.float(-7, 7);
-  const ax = s.cx + ox;
-  const ay = s.topY + H * 0.02 + 2;
+  const topCrowded = ctx.parts.antennae !== 'none' || ctx.parts.horns !== 'none';
+  const veryCrowded = ctx.parts.antennae !== 'none' && ctx.parts.horns !== 'none';
+  // 頭頂に角・触角があるときは、芽を中央へ重ねず、少し下げて横へ逃がす。
+  // side は表現型から決めるので、同じ seed では毎回同じ位置になる。
+  const side = ctx.pheno.asymmetry >= 0.5 ? -1 : 1;
+  const crowdedY = veryCrowded ? 0.22 : 0.14;
+  const crowdedSide = veryCrowded ? 0.66 : 0.5;
+  const crowdedScale = veryCrowded ? 0.82 : 0.9;
+  const ax = s.cx + ox + (topCrowded ? side * s.halfAt(s.topY + H * crowdedY) * crowdedSide : 0);
+  const ay = s.topY + H * (topCrowded ? crowdedY : 0.02) + 2;
 
   // 付け根は「体に落ちる短い影」だけ。閉じた図形は置かない。
   const shade = rootShade(ctx, ax, ay + 1, 11 * k, ox > 0 ? 0.4 : -0.4);
@@ -205,7 +213,7 @@ export function buildPlant(ctx: DrawCtx): PartOut[] {
       grow(ax + 8 * k, ay + 2, k * 0.76, 'sprout');
       break;
     default:
-      grow(ax, ay, k, kind);
+      grow(ax, ay, topCrowded ? k * crowdedScale : k, kind);
       break;
   }
 

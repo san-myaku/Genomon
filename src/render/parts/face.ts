@@ -2,7 +2,7 @@
  * 顔（目・口・頬）。
  *
  * 目の構成:
- *   白目 → 虹彩（単色の面）→ 目の中の意匠 → ハイライト 1 つ
+ *   白目 → 虹彩（薄い陰影と縁取りのある面）→ 目の中の意匠 → ハイライト 1 つ
  *   → 上まぶたの太いインク弧 →（形によって）下まぶた・目尻の線
  *
  * 白目は形ごとにパスを作り、それを clipPath にして虹彩を切り抜く。
@@ -33,6 +33,13 @@
  *   の 3 つを同時に起こしていた。
  *   陰・上明かり・虹彩の縁・小ハイライトを落とし、**単色の虹彩＋瞳＋
  *   小さなハイライト 1 つ**にする。層ではなく「形」で個体差を作る。
+ *
+ * 【2026-08 の質感調整】
+ *   その判断を守りすぎた結果、引きでの読みやすさは保てても、虹彩が
+ *   「単色の円＋白い点」に見える個体が増えた。そこで視線を強くする
+ *   瞳孔や過剰な光沢は戻さず、低コントラストの面内グラデーション・
+ *   薄い外周・下側の陰だけを共通層として戻す。形質の違いを隠さず、
+ *   紙の上に置いた小さな眼球としての奥行きを足すための層である。
  */
 
 import { darken, hexToHsl, hslToHex, mix } from '../../core/color.ts';
@@ -64,7 +71,7 @@ interface EyeStyle {
    * 虹彩の縦横比（1 で真円、>1 で縦長、<1 で横長）。
    *
    * 【なぜ真円だけでは足りないか — 実測】
-   *   『たまご』は白目が rx 0.6s / ry 1.32s と極端に縦長で、虹彩は
+   *   『たまご』は白目が rx 0.7s / ry 1.0s と縦長で、虹彩は
    *   短いほう（rx）に縛られるため直径 0.95s の小さな円になる。
    *   結果、虹彩の上下に白が 1.0s ずつ残り、`WUYZ-S7QE` `3ZC7-B8YR` は
    *   **白目を剥いて見開いた人間の目** に見えていた。
@@ -333,6 +340,31 @@ function scleraFillFor(shapeId: string, sclera: string): string {
   return shapeId === 'wide' ? darken(sclera, 0.16) : sclera;
 }
 
+/** 目の白目にだけ使う、紙の上で沈みすぎない薄い面内陰影。 */
+function eyeScleraGradient(ctx: DrawCtx, index: number, base: string): string {
+  const id = ctx.defs.add(`eyeSclera${index}`, (gid) =>
+    `<linearGradient id="${gid}" x1="0%" y1="0%" x2="0%" y2="100%">` +
+    `<stop offset="0%" stop-color="${mix('#fffdf8', base, 0.34)}"/>` +
+    `<stop offset="58%" stop-color="${base}"/>` +
+    `<stop offset="100%" stop-color="${darken(base, 0.08)}"/>` +
+    `</linearGradient>`,
+  );
+  return url(id);
+}
+
+/** 虹彩の共通質感。瞳孔を置かず、中心の柔らかい明るさと周縁の深さだけを出す。 */
+function eyeIrisGradient(ctx: DrawCtx, index: number, base: string): string {
+  const id = ctx.defs.add(`eyeIris${index}`, (gid) =>
+    `<radialGradient id="${gid}" cx="30%" cy="23%" r="86%">` +
+    `<stop offset="0%" stop-color="${mix('#fffdf8', base, 0.2)}"/>` +
+    `<stop offset="42%" stop-color="${mix(base, '#fffdf8', 0.08)}"/>` +
+    `<stop offset="78%" stop-color="${base}"/>` +
+    `<stop offset="100%" stop-color="${darken(base, 0.36)}"/>` +
+    `</radialGradient>`,
+  );
+  return url(id);
+}
+
 /** 楕円をパス文字列で書く（clipPath と共用するため）。 */
 function ellipseD(rx: number, ry: number, cy = 0): string {
   return `M${n(-rx)} ${n(cy)}A${n(rx)} ${n(ry)} 0 1 1 ${n(rx)} ${n(cy)}A${n(rx)} ${n(ry)} 0 1 1 ${n(-rx)} ${n(cy)}Z`;
@@ -398,12 +430,18 @@ function whiteShape(shapeId: string, rx: number, ry: number): string {
  *   「その子の目の色のいちばん濃いところ」にすると、同じ黒っぽさでも
  *   生きものの目に見える。配色ファミリーの個性も点目に乗る。
  */
-function drawSolidEye(ctx: DrawCtx, slot: EyeSlot, shapeId: string, iris: string): string {
+function drawSolidEye(ctx: DrawCtx, slot: EyeSlot, shapeId: string, iris: string, index: number): string {
   const c = ctx.colors;
   const { rx, ry } = slot;
   const droop = ctx.mood.droop;
   const wd = whiteShape(shapeId, rx, ry);
-  let g = path(wd, { fill: mix(c.pupil, iris, 0.3) });
+  const base = mix(c.pupil, iris, 0.3);
+  let g = path(wd, {
+    fill: eyeIrisGradient(ctx, index, base),
+    stroke: c.inkPaint,
+    width: ctx.strokeW * 0.78,
+    linejoin: 'round',
+  });
   // 小さな光を **1 つだけ**。点目の良さは「面が 1 つ」であることなので、
   // 光を 2 つ入れると途端に「つやつやした眼球」に寄る。
   // 色は純白ではなく紙寄りの白（硬い光にしない）。
@@ -418,7 +456,7 @@ function drawSolidEye(ctx: DrawCtx, slot: EyeSlot, shapeId: string, iris: string
     );
   }
   // 虹彩色をわずかに落として「黒目一色」に見えないようにする
-  g += ellipse(0, ry * 0.1, rx * 0.42, ry * 0.34, { fill: iris, opacity: 0.35 });
+  g += ellipse(0, ry * 0.1, rx * 0.42, ry * 0.34, { fill: darken(iris, 0.18), opacity: 0.3 });
   return g;
 }
 
@@ -457,17 +495,13 @@ interface MotifCtx {
  *   （『ほしぞら』の星屑を 5 個 → 3 個に減らしたときと同じ理由）。
  */
 function motifMarkup(kind: string, m: MotifCtx): string {
-  const { s, py, deep, light } = m;
+  const { s, py, deep, light, face } = m;
   switch (kind) {
     case 'round':
-      // まるい: **無地の面**。
-      //
-      // 【いちばん数の多い種類を「何も描かない」にした理由】
-      //   瞳孔を廃したあとの目は、面 1 枚とハイライト 1 つで完成している。
-      //   そこへ全個体に模様を入れると、こんどは「模様の見本市」になって
-      //   目の形の違い（この作品の個体差の芯）が読めなくなる。
-      //   意匠は珍しいものであるべきなので、標準は無地にする。
-      return '';
+      // まるい: 無地を保ったまま、中央へごく薄い色の溜まりだけを置く。
+      // 濃い一点は置かないので、視線の圧を強めず、単色の円っぽさだけを
+      // 解消する。外周の輪と合わせて「虹彩の面」として読ませる。
+      return ellipse(0, py + s * 0.08, s * 0.48, s * 0.32, { fill: deep, opacity: 0.14 });
 
     case 'slit': {
       // たてぼそ: 面を縦に横切るやわらかい帯。
@@ -499,17 +533,51 @@ function motifMarkup(kind: string, m: MotifCtx): string {
       // きらめき: 4 方向に伸びる光の星。明るい色なので焦点にならない。
       return path(starPath(0, py, s * 0.78, s * 0.24, 4, -90), { fill: light, opacity: 0.9 });
 
+    case 'capsule': {
+      // カプセル目: 縦長の面を上下で淡く分け、中央に細い光の帯を置く。
+      // 濃い一点を置かないので、既存の「たてぼそ」と違って薬のカプセルの
+      // ような丸い二色面として読める。
+      const h = Math.min(m.irY * 0.92, s * 1.08);
+      const w = Math.min(m.ir * 0.64, s * 0.64);
+      let g = ellipse(0, py, w, h, { fill: deep, opacity: 0.9 });
+      g += path(
+        `M${n(-w * 0.92)} ${n(py)}Q0 ${n(py - h * 0.18)} ${n(w * 0.92)} ${n(py)}`,
+        { stroke: light, width: Math.max(1.2, s * 0.12), opacity: 0.72 },
+      );
+      g += ellipse(-w * 0.28, py - h * 0.42, w * 0.2, h * 0.18, { fill: light, opacity: 0.82 });
+      return g;
+    }
+
+    case 'catEye': {
+      // ねこ目: 虹彩を縦長のアーモンドにして、中央を柔らかな縦の切れ目にする。
+      // `slit` の帯より細く、外周に面の色を残すことで猫らしい表情を出す。
+      const w = Math.min(m.ir * 0.72, s * 0.72);
+      const h = Math.min(m.irY * 0.88, s * 0.98);
+      let g = path(leafPath(0, py, h * 1.35, w * 1.18, -90, 0.34), { fill: light, opacity: 0.8 });
+      g += path(
+        `M0 ${n(py - h * 0.74)}Q${n(-w * 0.12)} ${n(py)} 0 ${n(py + h * 0.74)}Q${n(w * 0.12)} ${n(py)} 0 ${n(py - h * 0.74)}Z`,
+        { fill: deep, opacity: 0.72 },
+      );
+      g += path(`M${n(-w * 0.42)} ${n(py - h * 0.38)}Q0 ${n(py - h * 0.66)} ${n(w * 0.42)} ${n(py - h * 0.38)}`, {
+        stroke: light,
+        width: Math.max(1.1, s * 0.1),
+        opacity: 0.85,
+      });
+      return g;
+    }
+
     case 'petalP': {
-      // はなびら: 5 枚の花。花芯は面の色を少し落とすだけに留める。
+      // はなびら: 5 枚の花。白へ寄りすぎると目の中で発光して見えるため、
+      // 虹彩の色を残した薄い花として置く。
       let g = '';
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
         g += circle(Math.cos(a) * s * 0.38, py + Math.sin(a) * s * 0.38, s * 0.28, {
-          fill: light,
-          opacity: 0.85,
+          fill: mix(light, face, 0.38),
+          opacity: 0.68,
         });
       }
-      g += circle(0, py, s * 0.16, { fill: deep, opacity: 0.4 });
+      g += circle(0, py, s * 0.16, { fill: mix(deep, face, 0.35), opacity: 0.3 });
       return g;
     }
 
@@ -664,13 +732,23 @@ function motifMarkup(kind: string, m: MotifCtx): string {
       //   使うと 96px では意匠の見分けが付かなくなる。参考画像も濃い色の
       //   X なので、`deep`（面の色を落としたもの。黒でもインクでもない）
       //   で塗って『はなびら』とはっきり読み分ける。
-      let g = '';
-      for (const ang of [45, 135, 225, 315]) {
-        g += path(leafPath(0, py, s * 0.82, s * 0.34, ang, 0.42), { fill: deep });
-      }
+      // 旧実装の4枚の花弁は中心で重なり、縮小時に細く尖った「バツ」へ
+      // 潰れていた。丸い端点を持つ太い2本の曲線にして、面の中で読める
+      // やわらかな X にする。
+      const a = s * 0.57;
+      const bend = s * 0.12;
+      const width = Math.max(3.2, s * 0.3);
+      let g = path(
+        `M${n(-a)} ${n(py - a)}Q${n(-bend)} ${n(py - bend)} ${n(a)} ${n(py + a)}`,
+        { stroke: deep, width, linecap: 'round', linejoin: 'round', opacity: 0.94 },
+      );
+      g += path(
+        `M${n(-a)} ${n(py + a)}Q${n(bend)} ${n(py + bend)} ${n(a)} ${n(py - a)}`,
+        { stroke: deep, width, linecap: 'round', linejoin: 'round', opacity: 0.94 },
+      );
       // 4 枚がちょうど点で接するだけだと、96px では中心に小さな穴が
       // 開いた十字に見える。中心を同じ色で軽く埋めて 1 つの X に見せる。
-      g += circle(0, py, s * 0.16, { fill: deep });
+      g += circle(0, py, s * 0.2, { fill: deep });
       return g;
     }
 
@@ -701,6 +779,10 @@ function starSpikes(pupil: string): number {
     case 'gloss':
       // つやだま: 丸い意匠なので、先端の多い（＝丸に近い）星にする。
       return 6;
+    case 'capsule':
+      return 2;
+    case 'catEye':
+      return 3;
     case 'button':
       // カタログから外れた対立遺伝子。既存のセーブのために残す
       // （理由は `motifMarkup` の `button` を参照）。
@@ -713,6 +795,184 @@ function starSpikes(pupil: string): number {
     default:
       return 5;
   }
+}
+
+/** 角の尖りを丸めた星。小さな目の中でも三角形に潰れない。 */
+function roundedStarPath(cx: number, cy: number, rOuter: number, rInner: number, spikes: number, rot = -90): string {
+  const pts: Vec[] = [];
+  for (let i = 0; i < spikes * 2; i++) {
+    const r = i % 2 === 0 ? rOuter : rInner;
+    const a = ((rot + (i * 360) / (spikes * 2)) * Math.PI) / 180;
+    pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+  }
+  const midpoint = (a: Vec, b: Vec): Vec => ({ x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 });
+  let d = `M${n(midpoint(pts[pts.length - 1]!, pts[0]!).x)} ${n(midpoint(pts[pts.length - 1]!, pts[0]!).y)}`;
+  for (let i = 0; i < pts.length; i++) {
+    const next = pts[(i + 1) % pts.length]!;
+    const end = midpoint(pts[i]!, next);
+    d += `Q${n(pts[i]!.x)} ${n(pts[i]!.y)} ${n(end.x)} ${n(end.y)}`;
+  }
+  return `${d}Z`;
+}
+
+/** 3 次ベジェ曲線上の y 座標。まつ毛の付け根を輪郭に合わせるために使う。 */
+function cubicY(t: number, p0: number, p1: number, p2: number, p3: number): number {
+  const u = 1 - t;
+  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+}
+
+/** 2 次ベジェ曲線上の y 座標。 */
+function quadraticY(t: number, p0: number, p1: number, p2: number): number {
+  const u = 1 - t;
+  return u * u * p0 + 2 * u * t * p1 + t * t * p2;
+}
+
+/** 白目（点目ならその面）の上側輪郭上の y 座標。 */
+function upperContourY(shapeId: string, rx: number, ry: number, x: number): number {
+  const t = clamp((x + rx) / (2 * rx), 0, 1);
+  switch (shapeId) {
+    case 'leaf':
+      return cubicY(t, ry * 0.06, -ry * 1.35, -ry * 1.35, -ry * 0.12);
+    case 'wide':
+      return cubicY(t, -ry * 0.1, -ry * 1.32, -ry * 1.32, -ry * 0.1);
+    case 'sleepy':
+      return cubicY(t, -ry * 0.5, -ry * 1.3, -ry * 1.3, -ry * 0.2);
+    default: {
+      const nx = clamp(x / rx, -1, 1);
+      return -ry * Math.sqrt(Math.max(0, 1 - nx * nx));
+    }
+  }
+}
+
+/** 上まぶたの見えている下辺上の y 座標。まぶたが無ければ null。 */
+function upperLidY(rx: number, ry: number, st: EyeStyle, lid: number, x: number): number | null {
+  if (lid <= 0.015) return null;
+  const bow = st.lidBow;
+  const yc = -ry + ry * 2 * lid;
+  const sag = Math.min(
+    rx * lerp(0.1, 0.18, clamp((bow - 0.66) / 0.64, 0, 1)),
+    Math.max(0, (ry - yc) * 0.42),
+  );
+  const yMid = yc + sag;
+  const yEdge = yc - ry * (0.3 + 0.2 * bow);
+  const cpy = (8 * yMid - 2 * yEdge) / 6;
+  const w = rx * 1.34;
+  const t = clamp((x + w) / (2 * w), 0, 1);
+  return cubicY(t, yEdge, cpy, cpy, yEdge);
+}
+
+/** 点目で眠たげに上から覆われたときの、実際に見える上辺。 */
+function solidUpperY(rx: number, ry: number, shapeId: string, droop: number, x: number): number {
+  if (droop <= 0.3) return upperContourY(shapeId, rx, ry, x);
+  const cut = ry * 2 * clamp((droop - 0.3) * 0.7, 0, 0.45);
+  const base = -ry + cut;
+  const w = rx * 1.4;
+  const t = clamp((x + w) / (2 * w), 0, 1);
+  return quadraticY(t, base, base - ry * 0.5, base);
+}
+
+/** みかづき／したりめの弧上の y 座標。 */
+function closedUpperY(rx: number, ry: number, x: number): number {
+  const w = rx * 1.08;
+  const h = ry * 1.5;
+  const t = clamp((x + w) / (2 * w), 0, 1);
+  return quadraticY(t, h * 0.3, -h * 1.15, h * 0.3);
+}
+
+/** 下まつ毛の付け根を目の下辺へ合わせる。 */
+function lowerContourY(shapeId: string, rx: number, ry: number, x: number): number {
+  if (shapeId === 'crescent' || shapeId === 'smirk') return closedUpperY(rx, ry, x) + ry * 0.12;
+  const t = clamp((x + rx) / (2 * rx), 0, 1);
+  if (shapeId === 'sleepy') return quadraticY(t, ry * 0.48, ry * 0.82, ry * 0.62);
+  if (shapeId === 'leaf') return quadraticY(t, ry * 0.62, ry * 0.98, ry * 0.68);
+  return ry * Math.sqrt(Math.max(0, 1 - Math.pow(clamp(x / rx, -1, 1), 2)));
+}
+
+function lidValue(st: EyeStyle, droop: number): number {
+  return clamp(st.lid + droop * 0.36, 0, 0.8);
+}
+
+/** 目の形にかかわらず、まつ毛を実際の目の上辺へ接続する。 */
+function drawLashes(ctx: DrawCtx, slot: EyeSlot, shapeId: string, st: EyeStyle, lashRoom: number): string {
+  const kind = ctx.parts.lashes;
+  if (!kind || kind === 'none' || lashRoom <= 0.5) return '';
+
+  const { rx, ry, dir } = slot;
+  // 2 つ目は外側へ寄せ、1 つ目なら中央に置く。サイド長めだけは
+  // さらに外側へ置いて、目尻から流れるシルエットを作る。
+  const style = kind === 'lash' ? 'short' : kind;
+  const lx = dir === 0 ? 0 : dir * rx * (style === 'sideLong' ? 0.72 : 0.6);
+  const lid = lidValue(st, ctx.mood.droop);
+  const lower = style === 'lower';
+  let ly: number;
+  if (lower) {
+    ly = lowerContourY(shapeId, rx, ry, lx);
+  } else if (shapeId === 'crescent' || shapeId === 'smirk') {
+    ly = closedUpperY(rx, ry, lx);
+  } else if (isSolidEye(ctx.parts)) {
+    ly = solidUpperY(rx, ry, shapeId, ctx.mood.droop, lx);
+  } else {
+    ly = upperLidY(rx, ry, st, lid, lx) ?? upperContourY(shapeId, rx, ry, lx);
+  }
+
+  const fan: Readonly<Record<string, readonly [number, number][]>> = {
+    short: [[-20, 0.82], [0, 1], [20, 0.86]],
+    mid: [[-24, 0.84], [-8, 1], [10, 0.96], [26, 0.78]],
+    long: [[-30, 0.8], [-11, 1], [8, 1.08], [26, 0.92]],
+    sideLong: [[-12, 0.62], [6, 0.94], [24, 1.16], [40, 0.82]],
+    upper: [[-30, 0.58], [-12, 0.92], [7, 1.04], [24, 0.8]],
+    lower: [[-28, 0.66], [-9, 1], [12, 0.96], [30, 0.7]],
+    sleepy: [[-36, 0.58], [-16, 0.88], [5, 1], [25, 0.76]],
+  };
+  const fanForStyle = fan[style] ?? fan.short;
+  const lenK: Readonly<Record<string, number>> = {
+    short: 0.58,
+    mid: 0.72,
+    long: 0.92,
+    sideLong: 0.86,
+    upper: 0.7,
+    lower: 0.52,
+    sleepy: 0.62,
+  };
+  const mirror = dir === 0 ? 1 : dir;
+  const baseLen = Math.min(ry * (lenK[style] ?? 0.58), lashRoom * 0.85, rx * 0.72);
+  if (baseLen <= 2.2) return '';
+
+  if (lower) {
+    // 下まつ毛は1点から4本を束ねると、目の下で線が交差して汚く見える。
+    // 付け根を3点に分け、短い丸線を等間隔に置いて清潔な下縁にする。
+    const lowerLen = Math.min(baseLen * 0.78, ry * 0.34, rx * 0.32);
+    const lowerFan: readonly [number, number][] = [[-24, 0.68], [0, 0.82], [24, 0.68]];
+    let clean = '';
+    for (const [angDeg, fanLenK] of lowerFan) {
+      const rad = (angDeg * Math.PI) / 180;
+      const len = lowerLen * fanLenK;
+      const ex = lx + mirror * Math.sin(rad) * len;
+      const ey = ly + Math.cos(rad) * len;
+      const cx = lx + mirror * Math.sin(rad) * len * 0.46;
+      const cy = ly + Math.cos(rad) * len * 0.46 + len * 0.1;
+      clean += path(`M${n(lx)} ${n(ly)}Q${n(cx)} ${n(cy)} ${n(ex)} ${n(ey)}`, {
+        stroke: ctx.colors.inkPaint,
+        width: ctx.strokeThin * 1.18,
+        linecap: 'round',
+      });
+    }
+    return clean;
+  }
+
+  let g = '';
+  for (const [angDeg, fanLenK] of fanForStyle) {
+    const rad = (angDeg * Math.PI) / 180;
+    const len = baseLen * fanLenK;
+    const ex = lx + mirror * Math.sin(rad) * len;
+    const ey = ly + (lower ? 1 : -1) * Math.cos(rad) * len;
+    g += path(`M${n(lx)} ${n(ly)}L${n(ex)} ${n(ey)}`, {
+      stroke: ctx.colors.inkPaint,
+      width: ctx.strokeThin * (style === 'upper' ? 1.45 : style === 'sleepy' ? 1.15 : 1.3),
+      linecap: 'round',
+    });
+  }
+  return g;
 }
 
 /** 目 1 つ分の SVG。 */
@@ -751,6 +1011,7 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
     g += path(`M${n(-w)} ${n(h * 0.3)}Q0 ${n(-h * 1.15)} ${n(w)} ${n(h * 0.3)}`, {
       stroke: c.inkPaint,
       width: ctx.strokeW * 1.15,
+      linecap: 'round',
     });
     // 弧の内側にうっすら虹彩色を敷いて「閉じた目」であることを伝える
     g += path(`M${n(-w * 0.7)} ${n(h * 0.42)}Q0 ${n(-h * 0.52)} ${n(w * 0.7)} ${n(h * 0.42)}`, {
@@ -764,6 +1025,7 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
         opacity: 0.9,
       });
     }
+    g += drawLashes(ctx, slot, shapeId, st, lashRoom);
     g += `</g>`;
     return g;
   }
@@ -806,6 +1068,7 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
     g += path(`M${n(-w)} ${n(h * 0.3)}Q0 ${n(-h * 1.15)} ${n(w)} ${n(h * 0.3)}`, {
       stroke: c.inkPaint,
       width: ctx.strokeW * 1.15,
+      linecap: 'round',
     });
     g += `</g>`;
     // 弧の内側にうっすら虹彩色を敷いて「閉じた目」であることを伝える（みかづきと同じ）
@@ -820,6 +1083,7 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
         opacity: 0.9,
       });
     }
+    g += drawLashes(ctx, slot, shapeId, st, lashRoom);
     g += `</g>`;
     return g;
   }
@@ -845,7 +1109,8 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
   //   点目にするとその形質が画面から消えてしまうので、星のほうを残す
   //   （`starSpikes` が bead を 8 本の星として受け取る作りも既にある）。
   if (isSolidEye(ctx.parts) && shapeId !== 'starry') {
-    g += drawSolidEye(ctx, slot, shapeId, iris);
+    g += drawSolidEye(ctx, slot, shapeId, iris, index);
+    g += drawLashes(ctx, slot, shapeId, st, lashRoom);
     g += `</g>`;
     return g;
   }
@@ -859,7 +1124,7 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
   //
   // 【縦長だけ白目をやめた理由 — 製品オーナーの指示】
   //   「縦長は白目部分いらないんじゃない？」
-  //   縦長の器（たまご rx0.6s/ry1.32s）は、虹彩を縦長にしてもなお
+  //   縦長の器（たまご rx0.7s/ry1.0s）は、虹彩を縦長にしてもなお
   //   上下に白が残りやすい。そこを大きくすると白の面積だけが増えて
   //   「白目を剥いて見開いた人間の目」に戻る。判断は `isTallSolidEye`。
   //
@@ -872,8 +1137,10 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
   //   （`c.inkPaint`）ので、暗いテーマでも境目が消えない。
   const tall = isTallSolidEye(shapeId);
   const tallFill = tall ? tallEyeFill(iris) : '';
+  const irisFill = tall ? tallFill : shapeId === 'starry' ? darken(iris, 0.46) : iris;
+  const irisGradient = eyeIrisGradient(ctx, index, irisFill);
   g += path(wd, {
-    fill: tall ? tallFill : scleraFillFor(shapeId, c.sclera),
+    fill: tall ? irisGradient : eyeScleraGradient(ctx, index, scleraFillFor(shapeId, c.sclera)),
     stroke: c.inkPaint,
     width: ctx.strokeW * 0.82,
     linejoin: 'round',
@@ -896,12 +1163,22 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
   const ir = tall ? rx * 0.98 : Math.min(rx * irisK * 0.94, (ry * irisK) / st.irisAsp);
   // 縦長／横長の虹彩。白目からはみ出しても clipPath が切るので破綻しない。
   const irY = tall ? ry * 0.98 : Math.min(ir * st.irisAsp, ry * 0.98);
-  const irisFill = tall ? tallFill : shapeId === 'starry' ? darken(iris, 0.46) : iris;
   g += `<g clip-path="${url(clipId)}">`;
-  // 虹彩は **単色の面 1 枚**。陰・上明かり・縁の 3 層は落とした。
-  // 引きで見ると混ざって濁るだけで、近くで見ても「眼球の照り」にしかならない。
-  // べた目は器そのものが既にその色なので、二重に描かない。
-  if (!tall) g += ellipse(0, py, ir, irY, { fill: irisFill });
+  // 虹彩は低コントラストの面内グラデーション＋薄い外周で立体感を出す。
+  // べた目は器そのものが既に面なので、二重に描かず、外周だけを足す。
+  if (!tall) g += ellipse(0, py, ir, irY, { fill: irisGradient });
+  g += ellipse(0, py, ir * 0.94, irY * 0.94, {
+    fill: 'none',
+    stroke: darken(irisFill, 0.3),
+    width: Math.max(0.9, ctx.strokeThin * 0.62),
+    opacity: 0.64,
+  });
+  // 下側だけをほんの少し落として、上のハイライトとの明暗をつなぐ。
+  // 面の色を残すので、濃い瞳孔や人間の眼球のような強い視線にはならない。
+  g += ellipse(0, py + irY * 0.38, ir * 0.74, irY * 0.2, {
+    fill: darken(irisFill, 0.2),
+    opacity: 0.13,
+  });
 
   if (shapeId === 'starry') {
     // ほしぞら: 虹彩を夜空にして、瞳そのものを星形にする。
@@ -915,8 +1192,9 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
       });
     }
     const spikes = starSpikes(ctx.parts.pupil);
-    g += path(starPath(0, py, ir * 0.66, ir * 0.28, spikes, -90), {
-      fill: mix(c.pupil, '#ffffff', 0.1),
+    g += path(roundedStarPath(0, py, ir * 0.66, ir * 0.3, spikes, -90), {
+      // 星空の星は虹彩色ではなく、黒いシルエットとして読ませる。
+      fill: mix(c.ink, '#000000', 0.48),
     });
   } else {
     // 【意匠の基準半径を「面の短いほうの半径」にした理由】
@@ -986,7 +1264,7 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
   //   下辺を曲げるだけでは、白目の輪郭とほぼ直角に交わる両端の角が残る。
   //   まぶたは目尻・目頭へ向かって薄くなるものなので、端を持ち上げて
   //   白の輪郭と浅い角度で交わらせる。これで両端が丸く見える。
-  const lid = clamp(st.lid + droop * 0.36, 0, 0.8);
+  const lid = lidValue(st, droop);
   if (lid > 0.015) {
     const bow = st.lidBow;
     // 中央でまぶたが下りる高さ（従来の lid の意味をそのまま保つ）
@@ -1063,6 +1341,9 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
     //   目尻に線が 2 本並ぶと、それはもう「まつげの束」で、
     //   つり目という **形** の情報は 1 本目で足りている。
   }
+
+  // 付け根は固定値ではなく、上まぶたの実際の下辺／白目の輪郭から求める。
+  g += drawLashes(ctx, slot, shapeId, st, lashRoom);
 
   g += `</g>`;
   return g;
@@ -1344,6 +1625,38 @@ function drawMouth(ctx: DrawCtx): string {
       );
       return g;
     }
+    case 'bowl': {
+      /**
+       * おわん口: 参考画像の「両端が上がった器」。
+       *
+       * 上辺は中央へ向かって持ち上がり、下辺は浅い U 字になる。
+       * 下側に体色相の淡い面を一段だけ入れるが、唇の輪郭や歯は足さない。
+       * ひとつの閉じた面として描くので、細い線の笑顔や貼り付けた部品には見えない。
+       */
+      const ww = w * 0.94;
+      const cornerY = y - ww * 0.08;
+      const peakY = y - ww * 0.4;
+      const bottomY = y + ww * 0.48;
+      const fill = mix(c.body, c.ink, 0.56);
+      const inner = mix(c.belly, c.paper, 0.18);
+      let g = path(
+        `M${n(x - ww)} ${n(cornerY)}` +
+        `C${n(x - ww * 0.72)} ${n(y - ww * 0.02)} ${n(x - ww * 0.3)} ${n(y - ww * 0.24)} ${n(x)} ${n(peakY)}` +
+        `C${n(x + ww * 0.3)} ${n(y - ww * 0.24)} ${n(x + ww * 0.72)} ${n(y - ww * 0.02)} ${n(x + ww)} ${n(cornerY)}` +
+        `C${n(x + ww * 0.86)} ${n(y + ww * 0.28)} ${n(x + ww * 0.48)} ${n(bottomY)} ${n(x)} ${n(y + ww * 0.5)}` +
+        `C${n(x - ww * 0.48)} ${n(bottomY)} ${n(x - ww * 0.86)} ${n(y + ww * 0.28)} ${n(x - ww)} ${n(cornerY)}Z`,
+        { fill, stroke: c.inkPaint, width: sw, linejoin: 'round' },
+      );
+      // 下側の淡い面。外周から一段内側に置いて、輪郭のインクを残す。
+      g += path(
+        `M${n(x - ww * 0.56)} ${n(y + ww * 0.2)}` +
+        `Q${n(x)} ${n(y + ww * 0.54)} ${n(x + ww * 0.56)} ${n(y + ww * 0.2)}` +
+        `Q${n(x + ww * 0.34)} ${n(y + ww * 0.4)} ${n(x)} ${n(y + ww * 0.42)}` +
+        `Q${n(x - ww * 0.34)} ${n(y + ww * 0.4)} ${n(x - ww * 0.56)} ${n(y + ww * 0.2)}Z`,
+        { fill: inner },
+      );
+      return g;
+    }
     case 'smile':
     default: {
       // にこり: 大きく横に広い弧。
@@ -1405,7 +1718,9 @@ function drawMouth(ctx: DrawCtx): string {
       //   0.4〜1.05 の帯へ写す。どちらへ反っていても引きで読める。
       const raw = smile + 0.05;
       const d =
-        ww * 0.72 * Math.sign(raw) * lerp(0.4, 1.05, Math.min(1, Math.abs(raw) * 1.1));
+        // 参考画像のような短くても丸いU字にする。横幅は faceLayout 側で
+        // 縮め、ここでは弧の深さだけを少し起こす。
+        ww * 1.15 * Math.sign(raw) * lerp(0.4, 1.05, Math.min(1, Math.abs(raw) * 1.1));
       let g = path(`M${n(x - ww)} ${n(y)}Q${n(x)} ${n(y + d)} ${n(x + ww)} ${n(y)}`, {
         stroke: c.inkPaint,
         width: sw,
@@ -1451,7 +1766,7 @@ export function mouthSpan(ctx: DrawCtx): { top: number; bot: number } {
     // 両端は y のまま。口角の跳ね上げを廃したので反対側への張り出しは無い。
     const ww = w * 0.86;
     const raw = ctx.mood.smile + 0.05;
-    const d = ww * 0.72 * Math.sign(raw) * lerp(0.4, 1.05, Math.min(1, Math.abs(raw) * 1.1));
+    const d = ww * 1.15 * Math.sign(raw) * lerp(0.4, 1.05, Math.min(1, Math.abs(raw) * 1.1));
     const half = Math.abs(d) / 2;
     up = d >= 0 ? 0 : half;
     dn = d >= 0 ? half : 0;

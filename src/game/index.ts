@@ -16,6 +16,37 @@ export { careActionsFor, careAvailability, doCare } from './care.ts';
 
 // ── ショップ ───────────────────────────────────────────────
 export { availableItems, buyItem, lockedItems, useItem } from './shop.ts';
+export { saleQuote, sellCreature, type SaleQuote, type SaleQuoteResult, type SellResult } from './market.ts';
+
+// ── 飼育員 ────────────────────────────────────────────────
+export {
+  advanceStaff,
+  dismissStaff,
+  hiredStaff,
+  hireStaff,
+  refreshStaffCandidates,
+  rerollStaffCandidates,
+  staffConfig,
+  staffRoleLabel,
+  type StaffTickReport,
+} from './staff.ts';
+
+// ── 飼育フィールド ─────────────────────────────────────────
+export {
+  cleanDropping,
+  cleanField,
+  fieldBehaviorFor,
+  fieldMotionFor,
+  fieldSlotPosition,
+  nextDroppingIn,
+  placeFieldItem,
+  removeFieldItem,
+  type FieldGait,
+  type FieldBehavior,
+  type FieldBehaviorKind,
+  type FieldMotion,
+  type FieldTickReport,
+} from './field.ts';
 
 // ── 展示会 ─────────────────────────────────────────────────
 export { canExhibit, exhibitCooldownLeft, runExhibition } from './exhibition.ts';
@@ -31,6 +62,8 @@ export {
   hasRoomFor,
   releaseCreature,
   roomLeft,
+  renameCreature,
+  CREATURE_NAME_MAX_LENGTH,
 } from './state.ts';
 export { clearPhenotypeCache, getPhenotype, phenotypeCacheSize } from './phenoCache.ts';
 export { blockedCreatures } from './growth.ts';
@@ -43,7 +76,8 @@ export {
   CARE_DEFS,
   SHOP_ITEMS,
   SHOP_ITEM_BY_ID,
+  FIELD,
+  STAFF,
   TIMING,
   UNLOCK_RULES,
 } from './config.ts';
-

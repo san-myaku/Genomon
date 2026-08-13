@@ -24,6 +24,26 @@ export {
   lockedItems,
   buyItem,
   useItem,
+  // ── 公認ブリーダー販売 ──
+  saleQuote,
+  sellCreature,
+  // ── 飼育員 ──
+  dismissStaff,
+  hiredStaff,
+  hireStaff,
+  refreshStaffCandidates,
+  rerollStaffCandidates,
+  staffConfig,
+  staffRoleLabel,
+  // ── 飼育フィールド ──
+  cleanDropping,
+  cleanField,
+  fieldBehaviorFor,
+  fieldMotionFor,
+  fieldSlotPosition,
+  nextDroppingIn,
+  placeFieldItem,
+  removeFieldItem,
   // ── 展示会 ──
   canExhibit,
   runExhibition,
@@ -41,6 +61,8 @@ export {
   hasRoomFor,
   roomLeft,
   releaseCreature,
+  renameCreature,
+  CREATURE_NAME_MAX_LENGTH,
   blockedCreatures,
   refreshUnlocks,
   unlockHint,
@@ -49,7 +71,12 @@ export {
   CARE_DEFS,
   SHOP_ITEMS,
   SHOP_ITEM_BY_ID,
+  FIELD,
+  STAFF,
   UNLOCK_RULES,
 } from '../game/index.ts';
 
 export type { TickReport, Objective } from '../game/index.ts';
+export type { SaleQuote, SaleQuoteResult, SellResult } from '../game/index.ts';
+export type { FieldBehavior, FieldBehaviorKind, FieldGait, FieldMotion, FieldTickReport } from '../game/index.ts';
+export type { StaffTickReport } from '../game/index.ts';

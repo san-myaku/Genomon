@@ -62,6 +62,30 @@ export interface Specimen {
   issues: string[];
 }
 
+/**
+ * 一覧で表示した個体を、同じ Genotype のまま別の表示条件で組み直す。
+ *
+ * Visual Lab の一覧は `extraForce` で対立遺伝子を固定できるため、
+ * クリック後に seed だけから `randomGenotype()` をやり直すと、その固定が
+ * 消えてしまう。拡大表示や段階変更では、一覧が実際に使った Genotype を
+ * 入口にして Phenotype → RenderModel を再構成する。
+ */
+export function rebuildSpecimen(source: Specimen, stage: Stage, detail: RenderDetail): Specimen {
+  const pheno = phenotypeOf(source.genotype, stage);
+  const model = buildRenderModel(pheno, null, {
+    detail,
+    uid: makeUid(source.seed, `${stage}:${detail}:lab`),
+    genotype: source.genotype,
+  });
+  return {
+    seed: source.seed,
+    genotype: source.genotype,
+    pheno,
+    model,
+    issues: inspectModel(model).issues,
+  };
+}
+
 /** 指定した遺伝子座をホモ接合に固定した Genotype を作る（元は変更しない）。 */
 export function withForcedCat(
   g: Genotype,

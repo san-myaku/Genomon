@@ -42,8 +42,10 @@ export type CatLocus =
   | 'eyeCount'    // 目の数
   | 'eyeShape'    // 目の形
   | 'pupil'       // 瞳
+  | 'lashes'      // まつげ
   | 'mouth'       // 口
   | 'ears'        // 耳
+  | 'earTip'      // 耳先の別色
   | 'antennae'    // 触角
   | 'horns'       // 角
   | 'plant'       // 植物器官（葉・芽・花）
@@ -74,6 +76,7 @@ export type NumLocus =
   | 'glow'          // 発光
   | 'eyeSize'       // 目の大きさ
   | 'eyeSpacing'    // 目の間隔
+  | 'wingSize'      // 羽の大きさ（基準の何倍か）
   | 'asymmetry'     // 左右非対称の強さ
   | 'decorAmount'   // 装飾量の傾向
   | 'growthSpeed'   // 成長速度
@@ -191,8 +194,12 @@ export interface PartExpression {
   eyeCount: number;
   eyeShape: string;
   pupil: string;
+  /** まつげの有無。目の形（eyeShape）とは独立した遺伝子座。 */
+  lashes: string;
   mouth: string;
   ears: string;
+  /** ごく稀に耳先だけ別色になる形質。耳の形とは独立。 */
+  earTip: string;
   antennae: string;
   horns: string;
   plant: string;
@@ -250,6 +257,8 @@ export interface Phenotype {
   asymmetry: number;    // 0..1
   eyeSize: number;
   eyeSpacing: number;
+  /** 羽の大きさの倍率傾向（0..1）。実際の倍率への変換は render 側（aura.ts）で行う。 */
+  wingSize: number;
   patDensity: number;
   patScale: number;
   decorAmount: number;
@@ -408,6 +417,10 @@ export interface Unlocks {
   shop: boolean;
   breeding: boolean;
   collection: boolean;
+  /** 公認ブリーダー資格と販売所。 */
+  breeder: boolean;
+  /** 飼育員の募集・雇用。 */
+  staff: boolean;
 }
 
 export interface Capacity {
@@ -427,15 +440,100 @@ export interface ShopItemDef {
   /** 効果の一行表記（UI 用）。 */
   effectText: string;
   /** 使用対象。 */
-  target: 'egg' | 'juvenile' | 'adult' | 'any' | 'room';
+  target: 'egg' | 'juvenile' | 'adult' | 'any' | 'room' | 'field';
   /** 消費型か（false なら設備・装飾で永続）。 */
   consumable: boolean;
   /** 効果（消費型のみ）。 */
   effect?: Partial<Record<'hunger' | 'hydration' | 'cleanliness' | 'mood' | 'health' | 'growth' | 'hatch', number>>;
   /** 設備効果（永続）。 */
-  passive?: Partial<Record<'growthRate' | 'moodDecay' | 'hungerDecay' | 'hatchRate' | 'healthRegen', number>>;
+  passive?: Partial<Record<'growthRate' | 'moodDecay' | 'hungerDecay' | 'cleanlinessDecay' | 'hatchRate' | 'healthRegen', number>>;
+  /** 飼育枠を増やす買い切り許可証。購入時に capacity へ加算する。 */
+  capacityIncrease?: Partial<Record<Stage, number>>;
+  /** フィールドへ配置できる買い切り物。 */
+  fieldObject?: FieldObjectKind;
   /** 解放に必要な条件。 */
   requires?: { exhibitions?: number };
+}
+
+/** 販売所に残す、売却済み個体の最小限の来歴。遺伝情報そのものは複製しない。 */
+export interface SaleRecord {
+  id: string;
+  creatureName: string;
+  seed: string;
+  stage: Stage;
+  generation: number;
+  parentNames: readonly [string, string] | null;
+  bestScore: number;
+  exhibitionCount: number;
+  price: number;
+  soldAt: number;
+}
+
+/** 公認ブリーダーの資格・販売実績。 */
+export interface BreederState {
+  licensed: boolean;
+  sales: number;
+  earnings: number;
+  history: SaleRecord[];
+}
+
+/** 飼育員の雇用形態。短時間勤務は安価だが、一度に世話できる子が少ない。 */
+export type StaffRole = 'partTime' | 'fullTime';
+
+/** 募集に応じた候補者。能力値はセーブに残し、雇用後も同じ人として扱う。 */
+export interface StaffCandidate {
+  id: string;
+  name: string;
+  role: StaffRole;
+  /** 給料。STAFF.payIntervalMs ごとに引かれる。 */
+  wage: number;
+  /** 世話の効率。0.7〜1.35。 */
+  skill: number;
+  /** 仕事を休まず続ける確率の基準値。決定論的な欠勤判定に使う。 */
+  reliability: number;
+  profile: string;
+  reason: string;
+  quirk: string;
+}
+
+/** 現在の募集と雇用中の飼育員。候補者を保存するので再起動で能力が変わらない。 */
+export interface StaffState {
+  candidates: StaffCandidate[];
+  hiredId: string | null;
+  hiredAt: number;
+  lastServiceAt: number;
+  lastPaidAt: number;
+  unpaidSince: number;
+  /** 解雇後に募集を更新するたびに増える決定論的な世代番号。 */
+  candidateCycle: number;
+}
+
+/** フィールドに置ける遊具・環境物の種類。見た目だけでなく配置状態を保存する。 */
+export type FieldObjectKind = 'log' | 'pond' | 'flowerbed' | 'shade' | 'food' | 'water';
+
+export interface FieldPlacement {
+  itemId: string;
+  slot: number;
+  placedAt: number;
+}
+
+export interface FieldDropping {
+  id: string;
+  creatureId: string;
+  x: number;
+  y: number;
+  createdAt: number;
+}
+
+/** 複数個体が生活するフィールドの永続状態。 */
+export interface FieldState {
+  cleanliness: number;
+  droppings: FieldDropping[];
+  placements: FieldPlacement[];
+  /** 個体ごとの排泄生成済み年齢。tick の粒度に依存せず重複生成を防ぐ。 */
+  lastDroppingAge: Record<string, number>;
+  lastTickAt: number;
+  lastRobotCleanAt: number;
 }
 
 export interface ExhibitionScore {
@@ -473,11 +571,13 @@ export interface GameStats {
   exhibitions: number;
   coinsEarned: number;
   careActions: number;
+  /** 飼育員が自動で行った世話の回数。プレイヤーの手動世話とは分けて記録する。 */
+  staffCareActions: number;
 }
 
 export type ScreenId =
-  | 'title' | 'eggSelect' | 'nursery' | 'collection' | 'detail'
-  | 'exhibition' | 'shop' | 'breeding' | 'settings' | 'visualLab';
+  | 'title' | 'eggSelect' | 'nursery' | 'field' | 'collection' | 'detail'
+  | 'exhibition' | 'shop' | 'breeding' | 'market' | 'staff' | 'settings' | 'visualLab';
 
 export interface GameState {
   version: number;
@@ -501,6 +601,12 @@ export interface GameState {
   stats: GameStats;
   /** 育成室で選択中の個体 ID。 */
   activeCreatureId: string | null;
+  /** 複数個体が生活するフィールドの状態。 */
+  field: FieldState;
+  /** 公認ブリーダー資格と、売却済み個体の記録。 */
+  breeder: BreederState;
+  /** 飼育員の募集・雇用・給与の状態。 */
+  staff: StaffState;
   /** 将来のオンライン機能用の予約領域（縦切り版では未使用）。 */
   future: {
     marketListings: unknown[];
@@ -515,10 +621,13 @@ export interface GameState {
 
 /**
  * セーブ形式のバージョン。
- * v4 で Creature に lastExhibitAt / lastBredAt を追加した
+ * v7 で飼育員の募集・給与・自動世話を追加した。
+ * v6 で飼育フィールド（排泄・掃除・配置）を追加した。
+ * v5 では公認ブリーダー資格・販売履歴を追加した。
+ * v4 では Creature に lastExhibitAt / lastBredAt を追加した
  * （クールダウンがリロードで消える不具合の修正。DESIGN_DECISIONS D-013 参照）。
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 7;
 
 export interface SaveData {
   version: number;

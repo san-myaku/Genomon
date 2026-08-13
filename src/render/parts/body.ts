@@ -370,12 +370,16 @@ function bodyGradient(ctx: DrawCtx): string {
     return url(id);
   }
 
+  // 横に広い体は、標準の半径だと外側が暗く抜けて「体色が幅まで届かない」
+  // ように見える。広い個体だけ陰を少し浅くし、シルエット全体で地色を保つ。
+  const wide = ctx.parts.silhouette === 'wide';
+  const outer = wide ? mix(c.bodyDark, c.body, 0.72) : mix(c.bodyDark, darken(c.body, 0.28), 0.5);
   const id = ctx.defs.add('bodyg', (gid) =>
-    `<radialGradient id="${gid}" cx="38%" cy="24%" r="88%">` +
+    `<radialGradient id="${gid}" cx="38%" cy="24%" r="${wide ? 104 : 88}%">` +
     `<stop offset="0%" stop-color="${lighten(c.body, 0.16)}"/>` +
     `<stop offset="30%" stop-color="${c.body}"/>` +
-    `<stop offset="72%" stop-color="${c.body}"/>` +
-    `<stop offset="100%" stop-color="${mix(c.bodyDark, darken(c.body, 0.28), 0.5)}"/>` +
+    `<stop offset="${wide ? 78 : 72}%" stop-color="${c.body}"/>` +
+    `<stop offset="100%" stop-color="${outer}"/>` +
     `</radialGradient>`,
   );
   return url(id);
@@ -460,9 +464,12 @@ function buildBicolor(ctx: DrawCtx): PartOut | null {
       const a = (deg * Math.PI) / 180;
       const dir = rng.bool() ? 1 : -1;
       x1 = dir > 0 ? 0 : 1;
-      x2 = dir > 0 ? Math.cos(a) : 1 - Math.cos(a);
+      // 単位ベクトルのまま終点を置くと、横に広い体では勾配が途中で
+      // 終わってしまい、端まで第2色が届かない。向きは保ったまま
+      // x 方向の端まで伸ばす。
+      x2 = dir > 0 ? 1 : 0;
       y1 = 0;
-      y2 = Math.sin(a);
+      y2 = Math.tan(a);
       // 手前の角は完全に第 2 色、向こうの角は完全に地色。
       // 途中を全部「混ざった色」にすると 2 色に読めない。
       //

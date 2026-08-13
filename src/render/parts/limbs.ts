@@ -203,6 +203,67 @@ export function buildTail(ctx: DrawCtx): PartOut[] {
       ext({ x: ax + side * r * 0.55 - r, y: ay - r, w: r * 2, h: r * 2 });
       break;
     }
+    case 'fluff': {
+      /**
+       * ふさふさ丸尾: 体の背面から続く、丸く大きな毛束の尾。
+       *
+       * 根元を体の内側へ食い込ませ、体を描く前の Z 層に置くことで、
+       * 横へ貼った円ではなく「背中から生えた尾」に見せる。
+       * 外周はわずかな毛束の山谷だけに抑え、縮小時も丸い塊として読めるようにする。
+       */
+      // 通常の細い尾と同じ `ax` をそのまま根元にすると、体の外へ出る
+      // 数十 px しか残らず、丸尾が「小さなひれ」に縮んでしまう。
+      // 根元を体の内側へ入れ、そのぶん尾の面を外へ広げる。
+      const rootInset = Math.min(18 * k, Math.max(8, room * 0.55));
+      const rootX = ax - side * rootInset;
+      const tailRoom = Math.max(18, side > 0 ? 193 - rootX - 3 : rootX - 7);
+      const L = Math.min(54 * k, tailRoom / 1.14);
+      const H = L * 1.12;
+      const ux = (u: number): number => rootX + side * u;
+      const tailD =
+        `M${n(ux(-2))} ${n(ay + H * 0.28)}` +
+        `C${n(ux(2))} ${n(ay + H * 0.02)} ${n(ux(3))} ${n(ay - H * 0.5)} ${n(ux(L * 0.24))} ${n(ay - H * 0.74)}` +
+        `C${n(ux(L * 0.3))} ${n(ay - H * 0.98)} ${n(ux(L * 0.36))} ${n(ay - H * 1.06)} ${n(ux(L * 0.42))} ${n(ay - H * 0.86)}` +
+        `C${n(ux(L * 0.52))} ${n(ay - H * 1.02)} ${n(ux(L * 0.6))} ${n(ay - H * 1.02)} ${n(ux(L * 0.66))} ${n(ay - H * 0.82)}` +
+        `C${n(ux(L * 0.82))} ${n(ay - H * 0.98)} ${n(ux(L * 0.98))} ${n(ay - H * 0.82)} ${n(ux(L * 0.94))} ${n(ay - H * 0.62)}` +
+        `C${n(ux(L * 1.12))} ${n(ay - H * 0.46)} ${n(ux(L * 1.14))} ${n(ay - H * 0.2)} ${n(ux(L * 0.99))} ${n(ay - H * 0.06)}` +
+        `C${n(ux(L * 1.12))} ${n(ay + H * 0.08)} ${n(ux(L * 1.05))} ${n(ay + H * 0.24)} ${n(ux(L * 0.9))} ${n(ay + H * 0.23)}` +
+        `C${n(ux(L * 0.88))} ${n(ay + H * 0.43)} ${n(ux(L * 0.72))} ${n(ay + H * 0.52)} ${n(ux(L * 0.58))} ${n(ay + H * 0.36)}` +
+        `C${n(ux(L * 0.42))} ${n(ay + H * 0.5)} ${n(ux(L * 0.2))} ${n(ay + H * 0.44)} ${n(ux(-2))} ${n(ay + H * 0.28)}Z`;
+      const tailBase = harmonize(c.body, mix(c.bodyLight, c.accent, 0.18), 24);
+      const band = mix(c.belly, c.paper, 0.14);
+      svg += path(tailD, {
+        fill: organGrad(ctx, 'tailfluff', tailBase),
+        stroke: c.inkPaint,
+        width: ctx.strokeW,
+        linejoin: 'round',
+      });
+      // 斜めの淡色帯は外周の外へ出ないよう、尾のシルエットでクリップする。
+      const clip = ctx.defs.add('tailfluffClip', (id) => `<clipPath id="${id}"><path d="${tailD}"/></clipPath>`);
+      const bandD =
+        `M${n(ux(L * 0.02))} ${n(ay + H * 0.22)}` +
+        `C${n(ux(L * 0.24))} ${n(ay + H * 0.08)} ${n(ux(L * 0.5))} ${n(ay - H * 0.22)} ${n(ux(L * 0.86))} ${n(ay - H * 0.44)}`;
+      svg += path(bandD, {
+        stroke: band,
+        width: H * 0.22,
+        linecap: 'round',
+        clip,
+        opacity: 0.86,
+      });
+      // 毛束の向きを示す短い明るい筋を少数だけ入れる。
+      for (let i = 0; i < 3; i++) {
+        const u = L * (0.38 + i * 0.17);
+        svg += path(
+          `M${n(ux(u))} ${n(ay - H * (0.72 - i * 0.04))}` +
+          `q${n(side * L * 0.06)} ${n(-H * 0.08)} ${n(side * L * 0.13)} ${n(-H * 0.03)}`,
+          { stroke: lighten(tailBase, 0.2), width: ctx.strokeThin * 0.8, opacity: 0.42 },
+        );
+      }
+      const x0 = Math.min(ux(-4), ux(L * 1.18));
+      const x1 = Math.max(ux(-4), ux(L * 1.18));
+      ext({ x: x0 - ctx.strokeW, y: ay - H * 1.1 - ctx.strokeW, w: x1 - x0 + ctx.strokeW * 2, h: H * 1.7 + ctx.strokeW * 2 });
+      break;
+    }
     case 'curl': {
       /**
        * 「くるん」＝ 渦を巻いた尾。

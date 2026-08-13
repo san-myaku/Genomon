@@ -19,7 +19,6 @@ import {
   path,
   polyPath,
   shrinkToFit,
-  starPath,
   url,
   type Box,
   type Vec,
@@ -188,12 +187,28 @@ export function buildWings(ctx: DrawCtx): PartOut[] {
   const H = s.botY - s.topY;
   const ay = s.topY + H * 0.4;
   const k = decorScale(ctx);
+  /**
+   * 羽の大きさ倍率（製品オーナー要望「今の大きさを基準に、最大2.5倍の個体もいるように」）。
+   *
+   * 【0..1 の生値を 1.0〜2.5 倍へ変換する式】
+   *   `wingSize` 遺伝子座は `glow`/`translucency` と同じ低め寄りの分布
+   *   （mean 0.22）なので、生値のままだと大多数が 0.1〜0.4 に集まる。
+   *   そこを線形に 1.0〜2.5 へ引き伸ばすと「ほとんどの個体が 1.4 倍前後」に
+   *   なってしまい、「今の大きさが基準」という要望に反する。
+   *   べき乗（指数 1.7）をかけてから引き伸ばすことで、低い値側をさらに
+   *   0 寄りへ圧縮し、大多数を 1.0〜1.2 倍（見た目ほぼ今まで通り）に
+   *   留めつつ、まれに出る高い生値（0.8 超）だけが 2 倍〜2.5 倍に届く
+   *   ようにしている。
+   */
+  const wingSizeMult = 1 + Math.pow(ctx.pheno.wingSize, 1.7) * 1.5;
   // 体が大きいほど羽は控えめにして viewBox に収める
   // ひればねだけ 1.3 倍。他の羽は付け根から **上** へ立ち上がるので
   // 胴が広くても上端が体の外に出るが、ひれは横へ張り出す形なので、
   // 同じ寸法だと胴の広い個体（`7UDK-894T` `LTQJ-GP3L`）で
   // 体マスクにほぼ全部食われ、羽が 1 枚も見えなかった。
-  const L = clamp(96 - s.halfW, 26, 46) * k * (kind === 'finW' ? 1.3 : 1);
+  // `wingSizeMult` は最後に掛ける。`shrinkToFit`（この関数の末尾）が
+  // viewBox からのはみ出しを自動で縮めてくれるので、大きい個体でも破綻しない。
+  const L = clamp(96 - s.halfW, 26, 46) * k * (kind === 'finW' ? 1.3 : 1) * wingSizeMult;
   let svg = '';
   let bbox: Box | undefined;
 
@@ -545,7 +560,11 @@ export function buildWings(ctx: DrawCtx): PartOut[] {
     bbox = boxUnion(bbox, b);
   }
 
-  const fitted = shrinkToFit(svg, bbox, s.cx, ay, VIEW, 2);
+  // 既定の下限 0.72 だと `wingSize` 形質の高倍率個体（最大 2.5 倍）で
+  // viewBox に収まりきらないことがある（`shrinkToFit` のコメント参照）。
+  // 羽は面積のある翅なので、もう少し縮めても模様や形は読めるままなので
+  // 0.42 まで許容する。
+  const fitted = shrinkToFit(svg, bbox, s.cx, ay, VIEW, 2, 0.34);
   return [
     {
       id: 'wings',
@@ -643,6 +662,18 @@ export function buildCrystal(ctx: DrawCtx): PartOut[] {
       break;
     }
     case 'cluster': {
+      // 【！！このコードは消さないこと！！ — 遺伝子カタログから外れているが現役】
+      //   製品オーナーの判断で『むらがり』（結晶）は不採用になり、リードが
+      //   `genetics/loci.ts` の crystal から `cluster` を **外し済み**。
+      //   したがって **新しく生まれる個体にこの結晶は二度と出ない**。
+      //   それでも描画を残しているのは、**既存のセーブデータが遺伝子型に
+      //   `cluster` を持っている可能性がある**ため。ここを消すと
+      //   `switch (kind)` がどの case にも入らず、その個体の背中の結晶が
+      //   **無地に化ける** ＝ プレイヤーから見れば
+      //   飼っている個体の見た目が勝手に変わる。
+      //   カタログから消えていることを理由に「もう使われていない死んだコード」と
+      //   判断して削除しないこと（`shard` / `pattern.ts` の `ocelli` /
+      //   `face.ts` の `button` と同じ扱い）。
       const side = rng.bool(0.5) ? -1 : 1;
       const y0 = s.topY + H * 0.42;
       const x0 = s.edgeX(y0, side) - side * 3;
@@ -654,8 +685,12 @@ export function buildCrystal(ctx: DrawCtx): PartOut[] {
       anchor = { id: 'crystal', x: x0, y: y0, angle: side * 24, scale: kk };
       break;
     }
-    case 'halo': {
-      z = Z.CRYSTAL_BACK;
+      case 'halo': {
+        // 【！！このコードは消さないこと！！ — 遺伝子カタログから外れているが現役】
+        // `crystal` の新規カタログは `none` のみにしたが、旧セーブが
+        // `halo` を持っている可能性がある。描画を消すとその個体だけ
+        // 結晶が無地に化けるため、互換用に残す。
+        z = Z.CRYSTAL_BACK;
       const cy = Math.max(16, s.topY - 12);
       const rx = Math.min(s.halfW * 0.9, 42);
       svg += ellipse(s.cx, cy, rx, rx * 0.32, {
@@ -736,6 +771,9 @@ export function buildFloaters(ctx: DrawCtx): PartOut[] {
         break;
       }
       case 'petals': {
+        // 【！！このコードは消さないこと！！ — 遺伝子カタログから外れているが現役】
+        // 新規抽選からは撤去済み。旧セーブの `floaters=petals` を再表示する
+        // ためだけに残している。
         const r = rng.float(4, 6.6);
         const rot = rng.float(0, 360);
         sink.push(
@@ -765,12 +803,10 @@ export function buildFloaters(ctx: DrawCtx): PartOut[] {
       }
       case 'motes':
       default: {
+        // ほこりは丸い粒だけにする。尖った星形を混ぜると、結晶を
+        // 新規撤去したあとも浮遊物が「結晶の付属物」に見えてしまう。
         const r = rng.float(1.4, 3);
-        if (rng.bool(0.3)) {
-          sink.push(path(starPath(x, y, r * 2.2, r * 0.8, 4, -90), { fill: c.glow, opacity: 0.85 }));
-        } else {
-          sink.push(circle(x, y, r, { fill: mix(c.accent, '#ffffff', 0.35), opacity: rng.float(0.5, 0.9) }));
-        }
+        sink.push(circle(x, y, r, { fill: mix(c.accent, '#ffffff', 0.35), opacity: rng.float(0.5, 0.9) }));
         break;
       }
     }

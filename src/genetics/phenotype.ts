@@ -45,7 +45,14 @@ import type {
   Stage,
   TraitSummary,
 } from '../core/types.ts';
-import { CAT_LOCUS_BY_ID, CAT_LOCUS_IDS, NUM_LOCUS_IDS, alleleDef, alleleLabel } from './loci.ts';
+import {
+  CAT_LOCUS_BY_ID,
+  CAT_LOCUS_IDS,
+  NUM_LOCUS_BY_ID,
+  NUM_LOCUS_IDS,
+  alleleDef,
+  alleleLabel,
+} from './loci.ts';
 import { genotypeFingerprint } from './genotype.ts';
 
 // ─────────────────────────────────────────────────────────
@@ -138,6 +145,22 @@ function expressCat(locus: CatLocus, pair: CatPair, root: Rng): ExpressedCat {
 
   // 合成表現が定義されていない同値ヘテロは seed 由来で片方に決める。
   return pickFirst ? make(x, y) : make(y, x);
+}
+
+/** 新設後の遺伝子座がまだ無い旧セーブを、既定形質として読む。 */
+function catPairOrDefault(genotype: Genotype, locus: CatLocus): CatPair {
+  const pair = genotype.cat[locus];
+  if (pair) return pair;
+  const id = CAT_LOCUS_BY_ID[locus].alleles[0]?.id ?? 'none';
+  return [id, id];
+}
+
+/** 新設後の数値遺伝子座がまだ無い旧セーブを、カタログ平均として読む。 */
+function numPairOrDefault(genotype: Genotype, locus: NumLocus): [number, number] {
+  const pair = genotype.num[locus];
+  if (pair) return [pair[0], pair[1]];
+  const mean = NUM_LOCUS_BY_ID[locus].mean;
+  return [mean, mean];
 }
 
 // ─────────────────────────────────────────────────────────
@@ -355,11 +378,16 @@ function buildRarity(
   };
 
   // ── 1) 珍しい対立遺伝子の発現数（逓減、頭打ちなし）──
-  const notableLoci = CAT_LOCUS_IDS.filter((l) => expr[l].notable);
+  const notableLoci = CAT_LOCUS_IDS.filter(
+    (l) => expr[l].notable && (l !== 'earTip' || parts.earTip !== 'none'),
+  );
   if (notableLoci.length > 0) {
     const names = notableLoci
       .slice(0, 3)
-      .map((l) => `${CAT_LOCUS_BY_ID[l].label}の『${expr[l].label}』`);
+      .map((l) => {
+        const label = l === 'earTip' ? alleleLabel(l, parts.earTip) : expr[l].label;
+        return `${CAT_LOCUS_BY_ID[l].label}の『${label}』`;
+      });
     add(
       decayGain(notableLoci.length, 9, 0.85),
       `めずらしい形質が ${notableLoci.length} か所（${names.join('、')}）`,
@@ -475,8 +503,10 @@ const TRAIT_ORDER: readonly CatLocus[] = [
   'eyeCount',
   'eyeShape',
   'pupil',
+  'lashes',
   'mouth',
   'ears',
+  'earTip',
   'antennae',
   'horns',
   'plant',
@@ -495,22 +525,25 @@ function levelWord(v: number, lo: string, mid: string, hi: string): string {
 function buildTraits(
   expr: Record<CatLocus, ExpressedCat>,
   num: Record<NumLocus, number>,
+  parts: PartExpression,
 ): TraitSummary[] {
   const out: TraitSummary[] = [];
 
   for (const locus of TRAIT_ORDER) {
     const e = expr[locus];
+    // 耳先色は耳がないと見た目に発現しないため、表示値も最終 parts に合わせる。
+    const valueId = locus === 'earTip' ? parts.earTip : e.id;
     const t: TraitSummary = {
       locus,
       label: CAT_LOCUS_BY_ID[locus].label,
-      value: e.label,
+      value: locus === 'earTip' ? alleleLabel(locus, valueId) : e.label,
     };
     // 発現していない側の対立遺伝子＝この子が保因している形質。
     // 「おじいちゃん譲りの形質かも」という楽しさの源になるので必ず入れる。
     if (e.hidden && e.hidden !== e.id) {
       t.carrier = alleleLabel(locus, e.hidden);
     }
-    if (e.notable) t.notable = true;
+    if (e.notable && (locus !== 'earTip' || valueId !== 'none')) t.notable = true;
     out.push(t);
   }
 
@@ -550,13 +583,13 @@ export function phenotypeOf(genotype: Genotype, stage: Stage): Phenotype {
   // ---- カテゴリ形質の発現 ----
   const expr = {} as Record<CatLocus, ExpressedCat>;
   for (const locus of CAT_LOCUS_IDS) {
-    expr[locus] = expressCat(locus, genotype.cat[locus], root);
+    expr[locus] = expressCat(locus, catPairOrDefault(genotype, locus), root);
   }
 
   // ---- 数値形質の発現（2 つの平均 ＋ ごく小さいゆらぎ）----
   const num = {} as Record<NumLocus, number>;
   for (const locus of NUM_LOCUS_IDS) {
-    const pair = genotype.num[locus];
+    const pair = numPairOrDefault(genotype, locus);
     const avg = (pair[0] + pair[1]) / 2;
     const jitter = root.stream(`express:num:${locus}`).float(-0.02, 0.02);
     num[locus] = clamp01(avg + jitter);
@@ -571,8 +604,10 @@ export function phenotypeOf(genotype: Genotype, stage: Stage): Phenotype {
     eyeCount: EYE_COUNT_MAP[expr.eyeCount.id] ?? 2,
     eyeShape: expr.eyeShape.id,
     pupil: expr.pupil.id,
+    lashes: expr.lashes.id,
     mouth: expr.mouth.id,
     ears: expr.ears.id,
+    earTip: expr.ears.id === 'none' ? 'none' : expr.earTip.id,
     antennae: expr.antennae.id,
     horns: expr.horns.id,
     plant: expr.plant.id,
@@ -595,7 +630,7 @@ export function phenotypeOf(genotype: Genotype, stage: Stage): Phenotype {
   // 幼体のうちは成体で出る器官を伏せたい場合、UI 側で stage を見て伏せること。
   const palette = buildPalette(expr.palette.id, num.hue, num.sat, num.light, num.hueShift);
   const rarity = buildRarity(expr, parts, num, palette);
-  const traits = buildTraits(expr, num);
+  const traits = buildTraits(expr, num, parts);
 
   // ---- 数値の成長段階による差分 ----
   let size = mapRange(num.size, 0.8, 1.25);
@@ -657,6 +692,7 @@ export function phenotypeOf(genotype: Genotype, stage: Stage): Phenotype {
     asymmetry,
     eyeSize,
     eyeSpacing: num.eyeSpacing,
+    wingSize: num.wingSize,
     patDensity,
     patScale: num.patScale,
     decorAmount,
@@ -728,7 +764,7 @@ export function expressedAlleles(genotype: Genotype): Record<CatLocus, Expressed
   const root = new Rng(genotype.seed);
   const expr = {} as Record<CatLocus, ExpressedCat>;
   for (const locus of CAT_LOCUS_IDS) {
-    expr[locus] = expressCat(locus, genotype.cat[locus], root);
+    expr[locus] = expressCat(locus, catPairOrDefault(genotype, locus), root);
   }
   return expr;
 }

@@ -86,7 +86,8 @@ export function openDialog(opts: DialogOpts): Promise<string> {
 
     dlg.showModal();
     // 最初のボタンにフォーカスを置く（キーボードだけで進めるように）
-    (dlg.querySelector('button[data-val]') as HTMLElement | null)?.focus();
+    (dlg.querySelector('[autofocus]') as HTMLElement | null)?.focus() ??
+      (dlg.querySelector('button[data-val]') as HTMLElement | null)?.focus();
   });
 }
 

@@ -110,6 +110,13 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'sparkle', label: 'きらめき', dominance: 2, weight: 12, notable: true },
       { id: 'petalP',  label: 'はなびら', dominance: 1, weight: 8, notable: true },
 
+      // 【カプセル目／ねこ目を追加 — 製品オーナーの参考画像から】
+      //   既存の「たてぼそ」は縦帯、「わっか」は同心円なので、
+      //   参考画像の縦長カプセルと猫の瞳を別の意匠として追加する。
+      //   どちらも暗い一点を置かず、面の中の模様として描く。
+      { id: 'capsule', label: 'カプセル', dominance: 2, weight: 7 },
+      { id: 'catEye',  label: 'ねこ目',   dominance: 2, weight: 7 },
+
       // 【ここから 3 種は追加分】
       //   瞳孔を廃止して空いた「目の中」に置く意匠。いずれも濃い点を持たず、
       //   面か線でできているので、視線の圧を上げずに個体差だけ増やせる。
@@ -138,6 +145,32 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       //   図案として扱う（ずっと気絶している生きものだと不自然なため）。
       //   いちばん珍しい意匠にする（weight を最小に）。
       { id: 'batsu',    label: 'ばつじるし', dominance: 2, weight: 5, notable: true },
+    ],
+  },
+  {
+    locus: 'lashes',
+    label: 'まつげ',
+    alleles: [
+      // 【新設 — 製品オーナー要望】
+      //   「既存の目に加えて、まつげがある個体も追加してほしい」という指摘。
+      //   `eyeShape`（目の形）とは独立させる：まつげの有無をどの目の形にも
+      //   等しく乗せられるようにしたいので、形そのものを増やすのではなく
+      //   別のロカスにする（`face.ts` 側で `EYE_STYLE[shape].lash` に
+      //   このロカスの発現を重ねる。すでにまつげ寄りの形——ぱっちり・
+      //   ねむたげ・このは——では、もとの量とこのロカスの量の大きい方を使う
+      //   ので二重に足されて不自然に濃くなることはない）。
+      //   dominance を両方同じ値にして、発現率＝対立遺伝子頻度になる設計
+      //   にした（`collar` の beadRing/frill 修正と同じ考え方）。weight の
+      //   比をそのまま「まつげを持つ個体の割合」として読める（約 3 割）。
+      { id: 'none',     label: 'なし',       dominance: 3, weight: 66 },
+      // `lash` は既存セーブ互換のため残す「ショート」相当の標準形。
+      { id: 'lash',     label: 'ショート',   dominance: 3, weight: 8 },
+      { id: 'mid',      label: 'ちょい長',   dominance: 3, weight: 6 },
+      { id: 'long',     label: 'ロング',     dominance: 3, weight: 4 },
+      { id: 'sideLong', label: 'サイド長め', dominance: 3, weight: 3 },
+      { id: 'upper',    label: '上まつ毛み', dominance: 3, weight: 3 },
+      { id: 'lower',    label: '下まつ毛み', dominance: 3, weight: 3 },
+      { id: 'sleepy',   label: 'おねむまつ毛', dominance: 3, weight: 7 },
     ],
   },
   {
@@ -170,6 +203,9 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'beak',  label: 'くちばし', dominance: 2, weight: 5, notable: true },
       { id: 'fang',  label: 'きば',     dominance: 2, weight: 5, notable: true },
       { id: 'peek',  label: 'したみせ', dominance: 2, weight: 4, notable: true },
+      // 両端が上がった器に、下側の淡い面が入る参考画像由来の口。
+      // 人間の唇に寄せず、体色由来の面として描く。
+      { id: 'bowl',  label: 'おわん口', dominance: 2, weight: 4, notable: true },
     ],
   },
   {
@@ -184,11 +220,25 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'nub',     label: 'ちょこん', dominance: 4, weight: 20 },
       { id: 'round',   label: 'まるみみ', dominance: 4, weight: 17, coDominant: true },
       { id: 'leafEar', label: 'このはみみ', dominance: 4, weight: 15, coDominant: true },
-      { id: 'longEar', label: 'ながみみ', dominance: 2, weight: 10, notable: true },
+      { id: 'longEar', label: 'うさ耳',   dominance: 2, weight: 10, notable: true },
       { id: 'flopEar', label: 'たれみみ', dominance: 2, weight: 8, notable: true },
       { id: 'tuft',    label: 'ふさみみ', dominance: 1, weight: 4, notable: true },
+      { id: 'catEar',  label: 'ねこ耳',   dominance: 2, weight: 7 },
+      { id: 'bearEar', label: 'くま耳',   dominance: 2, weight: 6 },
+      // 【アホロートルひれを新規抽選から撤去】
+      //   製品オーナーの判断で不採用。既存セーブに残る `gill` は、
+      //   `render/parts/ears.ts` の描画を消さずに互換表示する。
     ],
     coExpress: { 'round+leafEar': 'roundLeafEar' },
+  },
+  {
+    locus: 'earTip',
+    label: '耳先色',
+    alleles: [
+      { id: 'none', label: 'なし',       dominance: 3, weight: 94 },
+      // 耳の形とは別に遺伝し、発現はごく稀。耳がない個体では見た目に出ない。
+      { id: 'tip',  label: 'みみさき色', dominance: 3, weight: 6, notable: true },
+    ],
   },
   {
     locus: 'antennae',
@@ -217,6 +267,15 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'twin',        label: 'ふたつづの', dominance: 3, weight: 12 },
       { id: 'spiral',      label: 'らせん',     dominance: 1, weight: 9, notable: true },
       { id: 'crystalHorn', label: 'すいしょう', dominance: 1, weight: 7, notable: true },
+      // 【新しい角を追加 — 製品オーナーの参考画像から】
+      //   既存の `budHorn`／`spiral`／`twin` と見分けられるよう、
+      //   小さな突起・とげ状・くるん・ヤギ・ラム・サンゴを別 ID にする。
+      { id: 'nubHorn',   label: 'つのポチ', dominance: 2, weight: 6 },
+      { id: 'coneHorn',  label: 'とげつの', dominance: 1, weight: 5 },
+      { id: 'curlHorn',  label: 'くるん角', dominance: 1, weight: 5 },
+      { id: 'goatHorn',  label: 'ヤギ角',   dominance: 1, weight: 4 },
+      { id: 'ramHorn',   label: 'ラム角',   dominance: 1, weight: 4 },
+      { id: 'coralHorn', label: 'サンゴ角', dominance: 1, weight: 3 },
     ],
   },
   {
@@ -265,6 +324,8 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'frond', label: 'はねかざり', dominance: 2, weight: 12, notable: true },
       { id: 'fin',   label: 'ひれ',     dominance: 2, weight: 11, notable: true },
       { id: 'wisp',  label: 'ゆらめき', dominance: 1, weight: 9, notable: true },
+      // 丸くふくらんだ、毛束のある参考画像由来の尾。
+      { id: 'fluff', label: 'ふさふさ丸尾', dominance: 2, weight: 7, notable: true },
     ],
   },
   {
@@ -272,8 +333,6 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
     label: '結晶',
     alleles: [
       { id: 'none',    label: 'なし',   dominance: 7, weight: 70 },
-      { id: 'cluster', label: 'むらがり', dominance: 1, weight: 9, notable: true },
-      { id: 'halo',    label: 'わがさ', dominance: 1, weight: 7, notable: true },
       // 【『かけら』（shard）を取り下げた】
       //   製品オーナーの判断で不採用（背中のトゲが尖って見えるという指摘を
       //   一度は丸め直したが、最終的に「完全に消して」という要望に変更）。
@@ -281,6 +340,15 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       //   残してある。** 既存のセーブが遺伝子型に `shard` を持っている
       //   可能性があり、描画を消すとその個体の背中が無地に化けてしまうため。
       //   カタログから消えているので、新しく生まれる個体には二度と出ない。
+      // 【『むらがり』（cluster）を取り下げた】
+      //   製品オーナーの判断で不採用（「結晶むらがりをゲームから完全削除」）。
+      //   **カタログから外すだけで、`aura.ts` の `case 'cluster'` の描画は
+      //   残してある。** 既存のセーブが遺伝子型に `cluster` を持っている
+      //   可能性があり、描画を消すとその個体の背中が無地に化けてしまうため。
+      //   カタログから消えているので、新しく生まれる個体には二度と出ない。
+      // 【結晶をゲームから完全撤去】
+      //   `halo` も新規抽選のカタログから外し、現在の結晶ロカスは `none` のみ。
+      //   下位の描画コードは既存セーブ互換のため `aura.ts` に残す。
     ],
   },
   {
@@ -323,8 +391,8 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'none',   label: 'なし',   dominance: 7, weight: 66 },
       { id: 'motes',  label: 'ほこり', dominance: 3, weight: 14 },
       { id: 'orbs',   label: 'たまゆら', dominance: 2, weight: 10, notable: true },
-      { id: 'petals', label: 'はなびら', dominance: 1, weight: 6, notable: true },
       { id: 'spores', label: 'ほうし', dominance: 1, weight: 4, notable: true },
+      // `petals` は製品オーナー判断で新規抽選から撤去。描画側は旧セーブ互換のため残す。
     ],
   },
   {
@@ -492,6 +560,12 @@ export const NUM_LOCI: readonly NumLocusDef[] = [
   { locus: 'glow',        label: '発光',       mean: 0.28, spread: 0.22 },
   { locus: 'eyeSize',     label: '目の大きさ', mean: 0.5,  spread: 0.16 },
   { locus: 'eyeSpacing',  label: '目の間隔',   mean: 0.5,  spread: 0.15 },
+  // 【羽の大きさ — 製品オーナー要望「今の大きさを基準に、最大2.5倍の個体もいるように」】
+  //   `glow`/`translucency` と同じ「平均を低めに寄せた」分布にして、
+  //   大多数は今までどおりの大きさ・ごく一部だけ大きく育つようにする。
+  //   0..1 の生値から実際の倍率（1.0〜2.5倍）への変換は `render/parts/aura.ts`
+  //   の `buildWings()` 側で行う（累乗カーブで低い値側に多くの個体を寄せる）。
+  { locus: 'wingSize',    label: '羽の大きさ', mean: 0.15, spread: 0.34 },
   { locus: 'asymmetry',   label: '左右差',     mean: 0.26, spread: 0.2 },
   { locus: 'decorAmount', label: '装飾量',     mean: 0.44, spread: 0.2 },
   { locus: 'growthSpeed', label: '成長の速さ', mean: 0.5,  spread: 0.15 },

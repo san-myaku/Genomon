@@ -31,7 +31,17 @@ import { buildRenderModel } from '../render/model.ts';
 import { inspectModel } from '../render/inspect.ts';
 import { makeUid } from '../render/svg.ts';
 import { $, $$, delegate, esc, setHtml } from '../ui/dom.ts';
-import { drawSpecimen, makeSpecimen, makeSpecimenNear, seedAt, triesFor, withForcedCat, type GenSpec, type Specimen } from './gen.ts';
+import {
+  drawSpecimen,
+  makeSpecimen,
+  makeSpecimenNear,
+  rebuildSpecimen,
+  seedAt,
+  triesFor,
+  withForcedCat,
+  type GenSpec,
+  type Specimen,
+} from './gen.ts';
 import {
   addSeed,
   clearSeeds,
@@ -136,6 +146,10 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
   let partLimit: number | null = null;
   /** 自動検査の結果。 */
   let inspectRows: { seed: string; issues: string[] }[] = [];
+  /** 一覧で実際に生成した個体。クリック後の拡大表示でも同じ Genotype を使う。 */
+  let gridItems = new Map<string, Specimen>();
+  /** 一覧カードから選択中なら、その個体を単体表示の再生成元にする。 */
+  let selectedGridItem: Specimen | null = null;
 
   const spec = (): GenSpec => ({
     stage: st.stage,
@@ -165,7 +179,10 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
   // ── 単体表示 ───────────────────────────────────────────
 
   function buildCurrent(): void {
-    const s = makeSpecimenNear(normalizeSeed(st.seed), spec(), triesFor(1, spec()));
+    const selected = selectedGridItem?.seed === normalizeSeed(st.seed) ? selectedGridItem : null;
+    const s = selected
+      ? rebuildSpecimen(selected, st.stage, st.detail)
+      : makeSpecimenNear(normalizeSeed(st.seed), spec(), triesFor(1, spec()));
     current = s;
     if (!s) {
       currentSvg = '';
@@ -201,12 +218,12 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
     const m = s.model;
     setHtml(
       box,
-      `<div class="stage">` +
-        `<div>` +
+      `<div class="stage lab-specimen-stage">` +
+        `<div class="lab-specimen-visual">` +
         `<div class="figure${s.issues.length ? ' bad' : ''}" id="lab-fig">${currentSvg}</div>` +
         partOrderUi(m) +
         `</div>` +
-        `<div class="meta">` +
+        `<div class="meta lab-specimen-meta">` +
         `<dl class="kv">` +
         kv('seed', s.seed) +
         kv('段階', `${STAGE_LABEL[p.stage]}（${p.stage}）`) +
@@ -224,12 +241,12 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
         (s.issues.length
           ? `<p class="warn">検査 NG: ${esc(s.issues.join(' / '))}</p>`
           : `<p class="good">検査 OK（inspectModel で問題なし）</p>`) +
-        `<div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">` +
+        `<div class="row lab-comment-row">` +
         `<input type="text" id="lab-comment-input" placeholder="コメント（任意。保存時にこの内容を添える）" ` +
-        `style="flex:1 1 220px;min-width:180px">` +
+        `>` +
         `<button data-act="save-seed">💬 コメントを付けて保存</button>` +
         `</div>` +
-        `<div class="row" style="margin-top:6px">` +
+        `<div class="row lab-action-row">` +
         `<button data-act="copy-seed">seed をコピー</button>` +
         `<button data-act="png">PNG 出力</button>` +
         `<button data-act="copy-json">JSON をコピー</button>` +
@@ -253,8 +270,8 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
       )
       .join('');
     return (
-      `<div style="margin-top:8px">` +
-      `<div class="row"><label class="f">描画順 ${cur} / ${max}</label>` +
+      `<div class="lab-parts-control">` +
+      `<div class="row"><label class="f lab-parts-label">描画順 ${cur} / ${max}</label>` +
       `<input type="range" id="lab-partlimit" min="0" max="${max}" value="${cur}" style="flex:1">` +
       `<button data-act="parts-all">全部</button></div>` +
       `<div class="parts">${rows}</div>` +
@@ -308,6 +325,7 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
       const s = makeSpecimen(seedAt(base, i), sp);
       if (s) items.push(s);
     }
+    gridItems = new Map(items.map((item) => [item.seed, item]));
     const ms = Math.round(performance.now() - t0);
 
     const shown = st.gridOnlyIssues ? items.filter((i) => i.issues.length) : items;
@@ -325,7 +343,7 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
     const activeFilters = st.gridFilters.filter((f) => f.locus && f.allele);
     setHtml(
       wrap,
-      `<p class="tagline"><span>生成 ${items.length} / 要求 ${n}（${ms}ms）</span>` +
+        `<p class="tagline lab-grid-summary"><span>生成 ${items.length} / 要求 ${n}（${ms}ms）</span>` +
         `<span class="${bad ? 'warn' : 'good'}">問題個体 ${bad}</span>` +
         `<span>素体 ${esc(countStr(bases))}</span>` +
         `<span>配色 ${esc(countStr(fam))}</span>` +
@@ -333,25 +351,31 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
           ? `<span>絞り込み: ${esc(activeFilters.map((f) => `${localeLocusLabel(f.locus)}=${alleleLabel(f.locus, f.allele)}`).join(' '))}</span>`
           : '') +
         `</p>` +
-        `<div id="lab-grid" style="grid-template-columns:repeat(${cols},minmax(0,1fr));max-width:${cols * (px + 8) + 20}px">` +
-        shown
-          .map((it) => {
-            const svg = drawSpecimen(it.model, {
-              background: null,
-              debug: st.debug,
-              partLimit: null,
-              width: px,
-              height: px,
-            });
-            return (
-              `<div class="cell${it.issues.length ? ' bad' : ''}" data-pick="${esc(it.seed)}" title="${esc(it.seed)}">` +
-              svg +
-              `<div class="lbl">${esc(it.seed)}<br>${esc(it.pheno.base)}/${esc(it.pheno.palette.family)}` +
-              (it.issues.length ? `<br><span class="iss">${esc(it.issues.join(' '))}</span>` : '') +
-              `</div></div>`
-            );
-          })
-          .join('') +
+        `<div id="lab-grid" class="lab-grid lab-grid--gallery" style="--lab-grid-cols:${cols};--lab-grid-max:${cols * (px + 8) + 20}px">` +
+        (shown.length
+          ? shown
+              .map((it) => {
+                const svg = drawSpecimen(it.model, {
+                  background: null,
+                  debug: st.debug,
+                  partLimit: null,
+                  width: px,
+                  height: px,
+                });
+                const label = `${it.pheno.base}/${it.pheno.palette.family}`;
+                return (
+                  `<button type="button" class="cell${it.issues.length ? ' bad' : ''}" data-pick="${esc(it.seed)}" ` +
+                  `aria-pressed="${normalizeSeed(st.seed) === it.seed ? 'true' : 'false'}" ` +
+                  `title="${esc(it.seed)}" aria-label="個体 ${esc(it.seed)}、${esc(label)} を拡大表示">` +
+                  `<span class="cell__art" aria-hidden="true">${svg}</span>` +
+                  `<span class="cell__lbl"><span class="cell__id">${esc(it.seed)}</span>` +
+                  `<span class="cell__meta">${esc(label)}</span>` +
+                  (it.issues.length ? `<span class="iss">${esc(it.issues.join(' '))}</span>` : '') +
+                  `</span></button>`
+                );
+              })
+              .join('')
+          : `<div class="lab-empty"><strong>表示できる個体はありません</strong><span>検査条件を変えるか、「問題個体だけ表示」を外して再生成してください。</span></div>`) +
         `</div>`,
     );
   }
@@ -361,6 +385,18 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
     const box = $('#lab-grid-filters', host);
     if (!box) return;
     setHtml(box, gridFilterRowsHtml(st.gridFilters));
+  }
+
+  /** 一覧から選んだ個体を、一覧上でもキーボード利用者に示す。 */
+  function markGridSelection(seed: string): void {
+    for (const cell of $$<HTMLButtonElement>('#lab-grid .cell', host)) {
+      cell.setAttribute('aria-pressed', cell.dataset.pick === seed ? 'true' : 'false');
+    }
+  }
+
+  /** 選択後は結果カードへ移動し、PCでもスマホでも次の確認を迷わせない。 */
+  function focusSpecimen(): void {
+    $('#lab-single-card', host)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ── 自動検査 ───────────────────────────────────────────
@@ -481,19 +517,21 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
       const issues = inspectModel(model).issues;
       const svg = drawSpecimen(model, { background: null, debug: st.debug, partLimit: null, width: px, height: px });
       return (
-        `<div class="cell${issues.length ? ' bad' : ''}" data-pick="${esc(seed)}">` +
-        svg +
-        `<div class="lbl">${esc(label)}<br>${esc(pheno.base)}/${esc(pheno.palette.family)}</div></div>`
+        `<button type="button" class="cell${issues.length ? ' bad' : ''}" data-pick="${esc(seed)}" ` +
+        `title="${esc(seed)}" aria-label="${esc(label)}、${esc(pheno.base)}/${esc(pheno.palette.family)}">` +
+        `<span class="cell__art" aria-hidden="true">${svg}</span>` +
+        `<span class="cell__lbl"><span class="cell__id">${esc(label)}</span>` +
+        `<span class="cell__meta">${esc(pheno.base)}/${esc(pheno.palette.family)}</span></span></button>`
       );
     };
 
     const cols = Math.min(8, Math.max(2, Math.ceil(Math.sqrt(n + 2))));
     setHtml(
       out,
-      `<p class="tagline"><span>親A=${esc(st.parentA)}</span><span>親B=${esc(st.parentB)}</span>` +
+      `<p class="tagline lab-grid-summary"><span>親A=${esc(st.parentA)}</span><span>親B=${esc(st.parentB)}</span>` +
         `<span>子 ${n} 体</span><span>mutationScale=${st.mutationScale}</span>` +
         `<span>force=${esc(forced ? `${st.forceLocus}:${st.forceAllele}` : 'なし')}</span></p>` +
-        `<div id="lab-grid" style="grid-template-columns:repeat(${cols},minmax(0,1fr));max-width:${cols * (px + 8) + 20}px">` +
+        `<div id="lab-sib-grid" class="lab-grid lab-grid--siblings" style="--lab-grid-cols:${cols};--lab-grid-max:${cols * (px + 8) + 20}px">` +
         cell(a.seed, a, `親A ${a.seed}`) +
         cell(b.seed, b, `親B ${b.seed}`) +
         kids.map((k, i) => cell(k.seed, k, `子${i + 1}`)).join('') +
@@ -549,7 +587,7 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
 
   function noteCell(s: SavedSeed): string {
     return (
-      `<td><input type="text" class="note-input" value="${esc(s.note)}" ` +
+      `<td data-label="コメント"><input type="text" class="note-input" value="${esc(s.note)}" ` +
       `data-seed="${esc(s.seed)}" data-stage="${esc(s.stage)}" placeholder="コメントを書く…" ` +
       `style="width:100%;box-sizing:border-box"></td>`
     );
@@ -557,9 +595,9 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
 
   function pendingRow(s: SavedSeed): string {
     return (
-      `<tr><td>${esc(s.seed)}</td><td>${esc(s.stage)}</td><td>${esc(s.issues.join(' '))}</td>` +
+      `<tr class="saved-row"><td data-label="seed">${esc(s.seed)}</td><td data-label="段階">${esc(s.stage)}</td><td data-label="issues">${esc(s.issues.join(' '))}</td>` +
       noteCell(s) +
-      `<td class="row" style="gap:4px">` +
+      `<td data-label="操作" class="row lab-row-actions">` +
       `<button data-act="saved-pick" data-seed="${esc(s.seed)}" data-stage="${esc(s.stage)}">開く</button>` +
       `<button class="good" data-act="saved-resolve" data-seed="${esc(s.seed)}" data-stage="${esc(s.stage)}" title="対応済みにする（消さずに残す）">✓ 対応済み</button>` +
       `<button data-act="saved-del" data-seed="${esc(s.seed)}" data-stage="${esc(s.stage)}" title="一覧から完全に削除する">×</button></td></tr>`
@@ -570,10 +608,10 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
     const who = s.resolvedBy === 'claude' ? 'Claude' : s.resolvedBy === 'user' ? '自分' : '?';
     const when = s.resolvedAt ? new Date(s.resolvedAt).toLocaleString('ja-JP') : '';
     return (
-      `<tr style="opacity:.6"><td>${esc(s.seed)}</td><td>${esc(s.stage)}</td>` +
-      `<td class="hint">${esc(who)} が対応済み<br>${esc(when)}</td>` +
-      `<td>${esc(s.note)}</td>` +
-      `<td class="row" style="gap:4px">` +
+      `<tr class="saved-row saved-row--resolved"><td data-label="seed">${esc(s.seed)}</td><td data-label="段階">${esc(s.stage)}</td>` +
+      `<td data-label="状態" class="hint">${esc(who)} が対応済み<br>${esc(when)}</td>` +
+      `<td data-label="コメント">${esc(s.note)}</td>` +
+      `<td data-label="操作" class="row lab-row-actions">` +
       `<button data-act="saved-pick" data-seed="${esc(s.seed)}" data-stage="${esc(s.stage)}">開く</button>` +
       `<button data-act="saved-unresolve" data-seed="${esc(s.seed)}" data-stage="${esc(s.stage)}" title="未対応に戻す">↺ 戻す</button>` +
       `<button data-act="saved-del" data-seed="${esc(s.seed)}" data-stage="${esc(s.stage)}">×</button></td></tr>`
@@ -587,7 +625,7 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
     const pending = list.filter((s) => !s.resolved);
     const resolved = list.filter((s) => s.resolved);
     const syncBar =
-      `<div class="row" style="align-items:center;margin-bottom:6px">` +
+      `<div class="row lab-saved-toolbar">` +
       `<button data-act="saved-sync">🔄 同期する（Claude とすり合わせ）</button>` +
       `<span id="lab-sync-status">${syncStatusHtml()}</span></div>`;
     if (!list.length) {
@@ -719,12 +757,12 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
   const offInput = delegate(host, 'input', 'input,select,textarea', (t) => {
     const el = t as HTMLInputElement;
     switch (el.id) {
-      case 'f-seed': st.seed = el.value; break;
+      case 'f-seed': st.seed = el.value; selectedGridItem = null; break;
       case 'f-stage': st.stage = el.value as Stage; break;
-      case 'f-base': st.base = el.value as BodyBase | ''; break;
-      case 'f-palette': st.palette = el.value; break;
+      case 'f-base': st.base = el.value as BodyBase | ''; selectedGridItem = null; break;
+      case 'f-palette': st.palette = el.value; selectedGridItem = null; break;
       case 'f-detail': st.detail = el.value as RenderDetail; break;
-      case 'f-force': st.force = el.checked; break;
+      case 'f-force': st.force = el.checked; selectedGridItem = null; break;
       case 'f-debug': st.debug = el.checked; break;
       case 'f-onlyissues': st.gridOnlyIssues = el.checked; renderGrid(); persist(); return;
       case 'f-gridn': st.gridN = Number(el.value) || 100; persist(); return;
@@ -758,11 +796,13 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
     const pick = t.dataset.pick;
     if (pick) {
       st.seed = pick;
+      selectedGridItem = gridItems.get(pick) ?? null;
       partLimit = null;
       persist();
       syncForm();
       renderSingle();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      markGridSelection(normalizeSeed(pick));
+      focusSpecimen();
       return;
     }
 
@@ -789,6 +829,7 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
         break;
       case 'random':
         st.seed = makeWorldSeed().toUpperCase().replace(/^W-/, '');
+        selectedGridItem = null;
         partLimit = null;
         persist();
         syncForm();
@@ -869,7 +910,8 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
           persist();
           syncForm();
           renderSingle();
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          markGridSelection(normalizeSeed(seed));
+          focusSpecimen();
         }
         break;
       }
@@ -960,64 +1002,64 @@ function shell(gridFilters: GridFilterRow[]): string {
     CAT_LOCI.map((l) => `<option value="${l.locus}">${l.label}（${l.locus}）</option>`).join('');
 
   return (
-    `<div class="card">` +
-    `<h2>生成の条件</h2>` +
-    `<div class="row">` +
-    `<label class="f">seed <input type="text" id="f-seed" size="18"></label>` +
-    `<button data-act="regen">同じ seed で再生成</button>` +
-    `<button data-act="random">ランダム seed</button>` +
-    `<label class="f">段階 <select id="f-stage">${stageOpts}</select></label>` +
-    `<label class="f">素体 <select id="f-base">${baseOpts}</select></label>` +
-    `<label class="f">配色 <select id="f-palette">${palOpts}</select></label>` +
-    `<label class="f"><input type="checkbox" id="f-force">強制（ホモ接合）</label>` +
-    `<label class="f">品質 <select id="f-detail"><option value="full">full</option><option value="lite">lite</option></select></label>` +
+    `<nav class="lab-quicknav" aria-label="Visual Lab の移動">` +
+    `<a href="#lab-settings">条件</a><a href="#lab-single-card">個体</a>` +
+    `<a href="#lab-grid-card">一覧</a><a href="#lab-inspect-card">自動検査</a>` +
+    `<a href="#lab-sib-card">兄弟比較</a><a href="#lab-saved-card">保存済み</a></nav>` +
+    `<section class="card lab-card" id="lab-settings">` +
+    `<div class="lab-card__head"><div><span class="lab-kicker">SETUP</span><h2>生成の条件</h2></div>` +
+    `<p class="lab-card__desc">まずここで、観察したい個体の条件を決めます。</p></div>` +
+    `<div class="lab-form-grid">` +
+    `<label class="f lab-field lab-field--seed"><span class="lab-field__label">seed</span><input type="text" id="f-seed" size="18"></label>` +
+    `<div class="lab-field lab-field--actions"><span class="lab-field__label">操作</span><span class="lab-inline-actions">` +
+    `<button data-act="regen">同じ seed で再生成</button><button data-act="random">ランダム seed</button></span></div>` +
+    `<label class="f lab-field"><span class="lab-field__label">段階</span><select id="f-stage">${stageOpts}</select></label>` +
+    `<label class="f lab-field"><span class="lab-field__label">素体</span><select id="f-base">${baseOpts}</select></label>` +
+    `<label class="f lab-field"><span class="lab-field__label">配色</span><select id="f-palette">${palOpts}</select></label>` +
+    `<label class="f lab-field lab-field--check"><span class="lab-field__label">固定</span><span class="lab-checkbox"><input type="checkbox" id="f-force">強制（ホモ接合）</span></label>` +
+    `<label class="f lab-field"><span class="lab-field__label">品質</span><select id="f-detail"><option value="full">full</option><option value="lite">lite</option></select></label>` +
     `</div>` +
-    `<div class="row">` +
-    `<label class="f">背景</label>` +
-    `<span class="seg"><button data-toggle="dark" data-value="false">明るい</button>` +
-    `<button data-toggle="dark" data-value="true">暗い</button></span>` +
-    `<label class="f">サイズ</label>` +
-    `<span class="seg"><button data-toggle="big" data-value="false">小</button>` +
-    `<button data-toggle="big" data-value="true">大</button></span>` +
-    `<label class="f"><input type="checkbox" id="f-debug">描画境界・アンカーを表示</label>` +
-    `</div>` +
-    `<p class="hint">★潜性の <strong>しんじゅ(pearl)</strong> と <strong>こうせき(mineral)</strong> は自然出現が合計 2.5% 前後です。` +
+    `<div class="lab-tool-row"><div class="lab-control-group"><span class="lab-control-label">背景</span>` +
+    `<span class="seg"><button data-toggle="dark" data-value="false">明るい</button><button data-toggle="dark" data-value="true">暗い</button></span></div>` +
+    `<div class="lab-control-group"><span class="lab-control-label">サイズ</span>` +
+    `<span class="seg"><button data-toggle="big" data-value="false">小</button><button data-toggle="big" data-value="true">大</button></span></div>` +
+    `<label class="lab-checkbox lab-debug-check"><input type="checkbox" id="f-debug">描画境界・アンカーを表示</label></div>` +
+    `<p class="hint lab-hint">★潜性の <strong>しんじゅ(pearl)</strong> と <strong>こうせき(mineral)</strong> は自然出現が合計 2.5% 前後です。` +
     `「強制」を入れると palette 遺伝子座をホモ接合に固定して確実に出せます。外すと自然出現だけを絞り込みます（時間がかかります）。</p>` +
-    `</div>` +
-    `<div class="card"><h2>個体</h2><div id="lab-single"></div></div>` +
-    `<div class="card">` +
-    `<h2>一覧</h2>` +
-    `<div class="row"><label class="f">体数 <input type="number" id="f-gridn" min="1" max="400" step="1" style="width:5.5em"></label>` +
-    `<label class="f"><input type="checkbox" id="f-onlyissues">問題個体だけ表示</label>` +
-    `<button class="primary" data-act="grid">一覧を生成</button></div>` +
+    `</section>` +
+    `<section class="card lab-card" id="lab-single-card"><div class="lab-card__head"><div><span class="lab-kicker">SPECIMEN</span><h2>個体</h2></div>` +
+    `<p class="lab-card__desc">一覧から選ぶと、ここで同じ個体を拡大して確認できます。</p></div><div id="lab-single"></div></section>` +
+    `<section class="card lab-card" id="lab-grid-card">` +
+    `<div class="lab-card__head"><div><span class="lab-kicker">GALLERY</span><h2>一覧</h2></div>` +
+    `<p class="lab-card__desc">小さく並べて全体の傾向を見て、気になる1体をタップします。</p></div>` +
+    `<div class="lab-grid-controls"><label class="f lab-inline-field">体数 <input type="number" id="f-gridn" min="1" max="400" step="1" style="width:5.5em"></label>` +
+    `<label class="lab-checkbox"><input type="checkbox" id="f-onlyissues">問題個体だけ表示</label>` +
+    `<button class="primary lab-generate-button" data-act="grid">一覧を生成</button></div>` +
+    `<div class="lab-filter-box"><div class="lab-subhead"><strong>一覧だけの固定条件</strong><span>最大3件</span></div>` +
     `<div class="row" id="lab-grid-filters">${gridFilterRowsHtml(gridFilters)}</div>` +
-    `<p class="hint">「絞り込み」で部位→種類を選ぶと、一覧の全個体をその種類に固定します（sheet.html と同じ仕組み）。` +
-    `変更したら「一覧を生成」を押してください。</p>` +
-    `<div id="lab-grid-wrap" style="margin-top:8px"></div>` +
-    `</div>` +
-    `<div class="card">` +
-    `<h2>自動検査（inspectModel）</h2>` +
-    `<div class="row"><label class="f">体数 <input type="number" id="f-inspn" min="1" max="5000" step="50" style="width:6em"></label>` +
-    `<button class="primary" id="lab-inspect-run" data-act="inspect">検査を実行</button>` +
-    `<span class="bar grow" id="lab-inspect-bar"><i></i></span></div>` +
-    `<div id="lab-inspect-out" style="margin-top:8px"></div>` +
-    `</div>` +
-    `<div class="card">` +
-    `<h2>兄弟比較（親A × 親B）</h2>` +
-    `<div class="row">` +
-    `<label class="f">親A seed <input type="text" id="f-pa" size="12"></label>` +
-    `<label class="f">親B seed <input type="text" id="f-pb" size="12"></label>` +
-    `<label class="f">子の数 <input type="number" id="f-kids" min="1" max="48" style="width:4.5em"></label>` +
-    `</div><div class="row">` +
-    `<label class="f">突然変異率 <input type="range" id="f-mut" min="0" max="20" step="0.5" style="width:160px">` +
-    `<span id="f-mut-out" class="mono"></span></label>` +
-    `<label class="f">形質を強制 <select id="f-flocus">${locusOpts}</select></label>` +
-    `<label class="f"><select id="f-fallele"></select></label>` +
-    `<button class="primary" data-act="sib">兄弟を生成</button>` +
-    `</div>` +
-    `<div id="lab-sib-out" style="margin-top:8px"></div>` +
-    `</div>` +
-    `<div class="card"><h2>保存した seed</h2><div id="lab-saved-out"></div></div>`
+    `<p class="hint">部位を選ぶと種類を選択できます。変更後に「一覧を生成」を押してください。</p></div>` +
+    `<div id="lab-grid-wrap"></div>` +
+    `</section>` +
+    `<section class="card lab-card" id="lab-inspect-card">` +
+    `<div class="lab-card__head"><div><span class="lab-kicker">CHECK</span><h2>自動検査</h2></div>` +
+    `<p class="lab-card__desc">inspectModel で、描画のはみ出しや構造上の問題をまとめて確認します。</p></div>` +
+    `<div class="lab-grid-controls"><label class="f lab-inline-field">体数 <input type="number" id="f-inspn" min="1" max="5000" step="50" style="width:6em"></label>` +
+    `<button class="primary" id="lab-inspect-run" data-act="inspect">検査を実行</button><span class="bar grow" id="lab-inspect-bar"><i></i></span></div>` +
+    `<div id="lab-inspect-out"></div></section>` +
+    `<section class="card lab-card" id="lab-sib-card">` +
+    `<div class="lab-card__head"><div><span class="lab-kicker">FAMILY</span><h2>兄弟比較</h2></div>` +
+    `<p class="lab-card__desc">親Aと親Bを組み合わせ、子どものばらつきを見比べます。</p></div>` +
+    `<div class="lab-form-grid lab-family-form">` +
+    `<label class="f lab-field"><span class="lab-field__label">親A seed</span><input type="text" id="f-pa" size="12"></label>` +
+    `<label class="f lab-field"><span class="lab-field__label">親B seed</span><input type="text" id="f-pb" size="12"></label>` +
+    `<label class="f lab-field"><span class="lab-field__label">子の数</span><input type="number" id="f-kids" min="1" max="48" style="width:4.5em"></label>` +
+    `<label class="f lab-field lab-field--range"><span class="lab-field__label">突然変異率 <output id="f-mut-out" class="mono"></output></span><input type="range" id="f-mut" min="0" max="20" step="0.5"></label>` +
+    `<label class="f lab-field"><span class="lab-field__label">形質を強制</span><select id="f-flocus">${locusOpts}</select></label>` +
+    `<label class="f lab-field"><span class="lab-field__label">種類</span><select id="f-fallele"></select></label>` +
+    `</div><div class="lab-form-actions"><button class="primary" data-act="sib">兄弟を生成</button></div>` +
+    `<div id="lab-sib-out"></div></section>` +
+    `<section class="card lab-card" id="lab-saved-card"><div class="lab-card__head"><div><span class="lab-kicker">NOTES</span><h2>保存した seed</h2></div>` +
+    `<p class="lab-card__desc">コメント付きの個体と、対応状況を確認します。</p></div><div id="lab-saved-out"></div></section>`
   );
 }
 

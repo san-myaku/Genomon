@@ -87,6 +87,14 @@ export function buyItem(state: GameState, itemId: string): { ok: boolean; reason
     state.inventory[item.id] = (state.inventory[item.id] ?? 0) + 1;
   } else {
     state.owned.push(item.id);
+    if (item.capacityIncrease) {
+      for (const stage of ['egg', 'juvenile', 'adult'] as const) {
+        const increase = item.capacityIncrease[stage] ?? 0;
+        if (Number.isFinite(increase) && increase > 0) {
+          state.capacity[stage] += Math.floor(increase);
+        }
+      }
+    }
   }
   state.updatedAt = gameNow();
   return { ok: true };
@@ -160,16 +168,18 @@ export function ownedPassives(state: GameState): {
   growthRate: number;
   moodDecay: number;
   hungerDecay: number;
+  cleanlinessDecay: number;
   hatchRate: number;
   healthRegen: number;
 } {
-  const sum = { growthRate: 0, moodDecay: 0, hungerDecay: 0, hatchRate: 0, healthRegen: 0 };
+  const sum = { growthRate: 0, moodDecay: 0, hungerDecay: 0, cleanlinessDecay: 0, hatchRate: 0, healthRegen: 0 };
   for (const id of state.owned) {
     const p = SHOP_ITEM_BY_ID[id]?.passive;
     if (!p) continue;
     sum.growthRate += p.growthRate ?? 0;
     sum.moodDecay += p.moodDecay ?? 0;
     sum.hungerDecay += p.hungerDecay ?? 0;
+    sum.cleanlinessDecay += p.cleanlinessDecay ?? 0;
     sum.hatchRate += p.hatchRate ?? 0;
     sum.healthRegen += p.healthRegen ?? 0;
   }

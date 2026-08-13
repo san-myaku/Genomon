@@ -231,6 +231,46 @@ export function findCreature(state: GameState, id: string): Creature | undefined
   return state.creatures.find((c) => c.id === id);
 }
 
+/** プレイヤーが付けられる名前の上限。日本語 16 文字なら一覧でも崩れにくい。 */
+export const CREATURE_NAME_MAX_LENGTH = 16;
+
+/**
+ * 個体名を変更する。
+ *
+ * 名前は表示だけの値に見えるが、親子関係のスナップショットと次の世代の
+ * 説明文にも使われるため、ゲーム層で正規化・重複検査まで一元管理する。
+ */
+export function renameCreature(
+  state: GameState,
+  creatureId: string,
+  rawName: string,
+  now = gameNow(),
+): { ok: boolean; name?: string; reason?: string } {
+  const c = findCreature(state, creatureId);
+  if (!c) return { ok: false, reason: 'その子は 見つかりませんでした。' };
+  if (typeof rawName !== 'string') return { ok: false, reason: '名前を 文字で 入れてください。' };
+
+  const name = rawName.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  if (name.length === 0) return { ok: false, reason: '名前を 1 文字以上 入れてください。' };
+  if (Array.from(name).length > CREATURE_NAME_MAX_LENGTH) {
+    return { ok: false, reason: `名前は ${CREATURE_NAME_MAX_LENGTH} 文字以内にしてください。` };
+  }
+  if (/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/u.test(name)) {
+    return { ok: false, reason: '名前に 使えない文字が 含まれています。' };
+  }
+
+  const key = name.toLocaleLowerCase('ja-JP');
+  const duplicate = state.creatures.find(
+    (other) => other.id !== creatureId && other.name.normalize('NFKC').toLocaleLowerCase('ja-JP') === key,
+  );
+  if (duplicate) return { ok: false, reason: `「${duplicate.name}」が すでに その名前を 使っています。` };
+  if (c.name === name) return { ok: false, reason: 'いまの名前と 同じです。' };
+
+  c.name = name;
+  state.updatedAt = now;
+  return { ok: true, name };
+}
+
 export function creaturesByStage(state: GameState, stage: Stage): Creature[] {
   return state.creatures.filter((c) => c.life.stage === stage);
 }

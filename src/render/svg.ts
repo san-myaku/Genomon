@@ -483,7 +483,16 @@ export function group(inner: string, transform?: string, extra?: string): string
 /**
  * bbox が viewBox からはみ出す場合に、指定中心で縮小して収める安全網。
  * 形状パラメータ側で収まるよう設計してあるので、実際に効くのは極端な個体のみ。
- * scale は最小 0.72 までに制限する（それ以上潰すとパーツが読めなくなるため）。
+ * scale は既定で最小 0.72 までに制限する（それ以上潰すとパーツが読めなくなるため）。
+ *
+ * 【`minK` を呼び出し側で選べるようにした理由 — 羽の大きさ形質】
+ *   `wingSize` 遺伝子座（最大 2.5 倍）を足したことで、体が大きく羽の
+ *   付け根の余白が狭い個体では、0.72 の下限でも viewBox に収まりきらず
+ *   `inspectModel` の `out-of-view` に引っかかるケースが実測で見つかった。
+ *   羽は「潰れても模様が読めなくなるほど繊細ではない」（触角や角の
+ *   ような細い線一本の意匠と違い、面積のある翅なので多少縮んでも
+ *   翅だと分かる）ため、羽の呼び出しだけ下限をさらに下げてよい。
+ *   他のパーツ（触角・角・crystal・肢など）は既定の 0.72 のまま。
  */
 export function shrinkToFit(
   svg: string,
@@ -492,6 +501,7 @@ export function shrinkToFit(
   cy: number,
   view: Box,
   pad = 1,
+  minK = 0.72,
 ): { svg: string; bbox: Box | undefined } {
   if (!svg || !bbox || bbox.w <= 0 || bbox.h <= 0) return { svg, bbox };
   const lo = { x: view.x + pad, y: view.y + pad };
@@ -509,7 +519,7 @@ export function shrinkToFit(
   need(bbox.y, cy, lo.y);
   need(bbox.y + bbox.h, cy, hi.y);
   if (k >= 0.999) return { svg, bbox };
-  k = Math.max(k, 0.72);
+  k = Math.max(k, minK);
   const nb: Box = {
     x: cx + (bbox.x - cx) * k,
     y: cy + (bbox.y - cy) * k,

@@ -112,7 +112,6 @@ describe('6. 潜性形質の発現', () => {
     cat.base = ['maru', 'maru'] as CatPair;
     // notable な潜性を優性の対立遺伝子とヘテロで持たせる
     cat.wings = ['gossamer', 'none'] as CatPair; // dominance 2 vs 7 → 通常は 'none'
-    cat.crystal = ['halo', 'none'] as CatPair; //  dominance 1 vs 7 → 通常は 'none'
     cat.eyeShape = ['starry', 'round'] as CatPair; // dominance 1 vs 5 → 通常は 'round'
     cat.pupil = ['petalP', 'round'] as CatPair; // dominance 1 vs 5 → 通常は 'round'
 
@@ -121,15 +120,13 @@ describe('6. 潜性形質の発現', () => {
 
     // 親自身には潜性が出ていないこと（隠れていること）を確認
     expect(adult(pa).parts.wings).toBe('none');
-    expect(adult(pa).parts.crystal).toBe('none');
     expect(adult(pa).parts.eyeShape).toBe('round');
 
     const N = 1000;
-    const hit = { gossamer: 0, halo: 0, starry: 0, petalP: 0 };
+    const hit = { gossamer: 0, starry: 0, petalP: 0 };
     for (let i = 0; i < N; i++) {
       const p = adult(breed(pa, pb, `rec-kid-${i}`));
       if (p.parts.wings === 'gossamer') hit.gossamer++;
-      if (p.parts.crystal === 'halo') hit.halo++;
       if (p.parts.eyeShape === 'starry') hit.starry++;
       if (p.parts.pupil === 'petalP') hit.petalP++;
     }
@@ -137,7 +134,6 @@ describe('6. 潜性形質の発現', () => {
     console.log(
       `[6] 潜性の発現率 (1000 交配, 理論値 25%): ` +
         `うすばね=${((hit.gossamer / N) * 100).toFixed(1)}% ` +
-        `わがさ=${((hit.halo / N) * 100).toFixed(1)}% ` +
         `ほしぞら=${((hit.starry / N) * 100).toFixed(1)}% ` +
         `はなびら瞳=${((hit.petalP / N) * 100).toFixed(1)}%`,
     );

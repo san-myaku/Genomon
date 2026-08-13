@@ -128,6 +128,188 @@ table.t tr:hover td{background:var(--panel)}
 .gauge+.gauge{margin-top:3px}
 .gauge span:first-child{color:var(--fg-soft)}
 .gauge output{font-family:ui-monospace,Menlo,Consolas,monospace;text-align:right}
+
+/* ── Visual Lab 2026 polish ───────────────────────────────
+   操作の意味を保ったまま、観察対象（個体）を主役にする。
+   一覧の列数は画面幅に合わせ、スマホではカードが読める大きさを優先する。 */
+html,body{min-width:0;overflow-x:hidden}
+body{font-size:14px;background-image:radial-gradient(color-mix(in srgb,var(--line) 38%,transparent) 1px,transparent 1px);background-size:22px 22px}
+
+.lab-hdr{padding:10px clamp(12px,2.2vw,30px);gap:10px 14px;min-height:58px;
+  background:color-mix(in srgb,var(--panel) 94%,var(--accent) 6%);box-shadow:0 3px 14px rgba(80,55,25,.13)}
+.lab-hdr h1{font-size:15px;letter-spacing:.045em;white-space:nowrap}
+.lab-hdr .badge{padding:3px 8px;border-radius:99px;letter-spacing:.04em}
+.lab-hdr>.hint{margin:0;min-width:0;overflow-wrap:anywhere}
+.lab-tabs{gap:6px;margin-left:auto}
+.lab-tab{min-height:38px;padding:7px 16px;border-radius:10px;font-size:13px}
+.lab-tab[aria-selected="true"]{box-shadow:0 2px 0 color-mix(in srgb,var(--accent) 65%,#000)}
+
+.lab-body{width:min(100%,1480px);margin:0 auto;padding:16px clamp(10px,2.2vw,30px) 76px}
+.lab-quicknav{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:0 0 14px;min-width:0}
+.lab-quicknav::-webkit-scrollbar{display:none}
+.lab-quicknav a{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:6px 14px;
+  border:1.5px solid var(--line);border-radius:99px;background:var(--panel2);color:var(--fg-soft);
+  font-size:12px;font-weight:800;text-decoration:none;white-space:nowrap;transition:background .16s,border-color .16s,color .16s}
+.lab-quicknav a:hover,.lab-quicknav a:focus-visible{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+
+.lab-card{padding:clamp(13px,1.8vw,22px);margin-bottom:16px;border-radius:16px;box-shadow:0 3px 12px rgba(110,75,35,.09);scroll-margin-top:78px}
+.lab-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 15px;padding-bottom:11px;border-bottom:1px solid var(--line)}
+.lab-card__head h2{font-size:16px;line-height:1.3;color:var(--fg);letter-spacing:.035em}
+.lab-kicker{display:block;margin-bottom:3px;color:var(--accent);font-size:10px;font-weight:900;letter-spacing:.14em}
+.lab-card__desc{max-width:42em;margin:3px 0 0;color:var(--fg-soft);font-size:12px;line-height:1.55;text-align:right}
+.lab-subhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;color:var(--fg)}
+.lab-subhead span{color:var(--fg-soft);font-size:11px}
+
+.lab-form-grid{display:grid;grid-template-columns:minmax(165px,1.25fr) minmax(185px,auto) repeat(5,minmax(105px,1fr));gap:10px}
+.lab-field{display:grid!important;align-content:start;gap:4px;min-width:0;white-space:normal!important}
+.lab-field__label{color:var(--fg-soft);font-size:11px;font-weight:800;line-height:1.25}
+.lab-field input[type=text],.lab-field input[type=number],.lab-field select{width:100%;min-height:36px;padding:7px 9px;border-radius:9px}
+.lab-field--actions{min-width:0}
+.lab-inline-actions{display:flex;gap:6px;flex-wrap:wrap;min-height:36px}
+.lab-inline-actions button{flex:1 1 auto;white-space:nowrap}
+.lab-checkbox{display:inline-flex;align-items:center;gap:6px;min-height:36px;color:var(--fg);font-size:12px;font-weight:700;line-height:1.35}
+.lab-checkbox input{accent-color:var(--accent);width:16px;height:16px;flex:0 0 auto}
+.lab-tool-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid var(--line)}
+.lab-control-group{display:flex;align-items:center;gap:7px}
+.lab-control-label{color:var(--fg-soft);font-size:11px;font-weight:800}
+.lab-debug-check{margin-left:auto}
+.lab-hint{max-width:100ch;margin-top:12px;line-height:1.6}
+
+button{min-height:36px}
+input[type=text],input[type=number],select{min-height:36px}
+.seg{border-radius:9px}
+.seg button{min-height:34px;padding-inline:13px}
+.lab-grid-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.lab-inline-field{display:inline-flex;align-items:center;gap:6px;min-height:36px;white-space:nowrap}
+.lab-inline-field input{min-height:36px}
+.lab-generate-button{margin-left:auto}
+.lab-form-actions{display:flex;justify-content:flex-end;margin-top:12px}
+.lab-filter-box{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--panel) 55%,transparent)}
+#lab-grid-filters{gap:7px}
+.pickrow{min-height:38px;padding:4px 6px;border:1px solid color-mix(in srgb,var(--line) 75%,transparent);background:var(--panel2)}
+.pickrow select{min-height:30px}
+.pickrow .clear{min-height:30px}
+
+.lab-specimen-stage{display:grid;grid-template-columns:minmax(0,42%) minmax(0,1fr);gap:18px;align-items:start}
+.lab-specimen-visual{min-width:0;max-width:100%}
+.lab-specimen-visual .figure{width:min(100%,440px);margin:0 auto;padding:9px;border-radius:14px}
+.lab-specimen-visual .figure svg{display:block;width:100%;height:auto;max-width:100%}
+.lab-specimen-meta{min-width:0;flex:none}
+.lab-specimen-meta .kv{grid-template-columns:minmax(66px,auto) minmax(0,1fr);gap:4px 10px}
+.lab-comment-row{margin-top:14px;gap:8px}
+.lab-comment-row input{flex:1 1 220px;min-width:0;min-height:38px;padding:7px 10px}
+.lab-comment-row button{flex:0 0 auto}
+.lab-action-row{margin-top:8px;gap:7px}
+.lab-parts-control{margin-top:12px}
+.lab-parts-label{flex:0 0 auto}
+.parts{max-height:190px}
+
+.lab-grid-summary{align-items:center;gap:6px;margin:14px 0 10px}
+.lab-grid-summary span{display:inline-flex;align-items:center;min-height:28px;padding:3px 9px;border:1px solid var(--line);border-radius:99px;background:var(--panel2);font-size:11px}
+.lab-grid-summary .good{color:var(--good);border-color:color-mix(in srgb,var(--good) 48%,var(--line))}
+.lab-grid-summary .warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 48%,var(--line))}
+.lab-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:9px;width:100%;max-width:min(100%,var(--lab-grid-max,100%));margin:0 auto}
+.cell{display:flex;flex-direction:column;align-items:stretch;min-width:0;width:100%;padding:5px;border:1.5px solid var(--line);border-radius:12px;background:var(--paper);color:var(--fg);
+  text-align:left;appearance:none;box-shadow:0 2px 6px rgba(100,70,30,.06);transition:transform .14s,border-color .14s,box-shadow .14s}
+.cell:hover{border-color:var(--accent);box-shadow:0 4px 12px rgba(100,70,30,.15);transform:translateY(-2px);color:var(--fg)}
+.cell:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.cell__art{display:block;width:100%;aspect-ratio:1/1;overflow:hidden;border-radius:8px;background:var(--paper)}
+.cell__art svg{display:block;width:100%;height:100%;max-width:none}
+.cell__lbl{display:flex;flex-direction:column;gap:1px;min-width:0;padding:6px 2px 2px}
+.cell__id,.cell__meta,.cell .iss{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell__id{font-size:10px;font-weight:900;letter-spacing:.025em}
+.cell__meta{font-size:10px;color:var(--fg-soft);line-height:1.3}
+.cell .iss{font-size:9px;color:var(--warn);line-height:1.3;white-space:normal;overflow-wrap:anywhere}
+.cell.bad{border-color:var(--warn);box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 28%,transparent)}
+.lab-empty{grid-column:1/-1;display:grid;gap:4px;padding:28px 16px;text-align:center;border:1px dashed var(--line);border-radius:12px;color:var(--fg-soft)}
+.lab-empty strong{color:var(--fg)}
+
+.lab-saved-toolbar{align-items:flex-start;margin-bottom:9px}
+.lab-row-actions{gap:5px;align-items:center;flex-wrap:wrap}
+.note-input{min-height:36px;padding:6px 8px;border-radius:8px}
+.saved-row--resolved{opacity:.64}
+
+@media (max-width:900px){
+  .lab-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .lab-field--seed{grid-column:span 2}
+  .lab-field--actions{grid-column:span 1}
+  .lab-specimen-stage{grid-template-columns:minmax(0,1fr)}
+  .lab-specimen-visual .figure{width:min(100%,440px)}
+  .lab-specimen-meta{width:100%}
+}
+
+/* PC workspace: 条件を決めたあと、左の一覧と右の選択個体を同時に見る。 */
+@media (min-width:1100px){
+  /* .lab-body は製品版・開発版のパネルを包む外枠。実際のカード群は
+     #lab-panel-lab の直下なので、ここを作業用グリッドにする。 */
+  .lab-body{display:block}
+  #lab-panel-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,420px);column-gap:16px;row-gap:0;align-items:start}
+  .lab-quicknav,#lab-settings,#lab-inspect-card,#lab-sib-card,#lab-saved-card{grid-column:1/-1}
+  #lab-single-card{grid-column:2;grid-row:3;position:sticky;top:74px;max-height:calc(100vh - 90px);max-height:calc(100dvh - 90px);overflow:auto;min-width:0}
+  #lab-grid-card{grid-column:1;grid-row:3;min-width:0}
+  #lab-single-card .lab-specimen-stage{grid-template-columns:minmax(0,1fr);gap:12px}
+  #lab-single-card .lab-specimen-visual .figure{width:min(100%,400px)}
+  #lab-single-card .lab-card__head{display:block}
+  #lab-single-card .lab-card__desc{text-align:left;margin-top:6px}
+  #lab-grid-card .lab-grid{grid-template-columns:repeat(auto-fill,minmax(116px,1fr))}
+  .cell[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 28%,transparent),0 5px 14px rgba(100,70,30,.16)}
+}
+
+@media (max-width:680px){
+  .lab-hdr{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:9px 10px;gap:7px 8px}
+  .lab-hdr h1{font-size:14px}
+  .lab-hdr>.hint{grid-column:1/-1;grid-row:2;font-size:10px}
+  .lab-tabs{grid-column:1/-1;grid-row:3;display:grid;grid-template-columns:1fr 1fr;margin:0}
+  .lab-tab{width:100%;min-height:40px}
+  .lab-body{padding:12px 10px 72px}
+  .lab-card{padding:13px 12px;margin-bottom:13px;border-radius:14px}
+  .lab-card__head{display:block;margin-bottom:12px;padding-bottom:9px}
+  .lab-card__desc{margin-top:5px;text-align:left;font-size:11px}
+  .lab-form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .lab-field--seed,.lab-field--actions{grid-column:1/-1}
+  .lab-field--actions .lab-inline-actions{display:grid;grid-template-columns:1fr 1fr}
+  .lab-tool-row{gap:9px 13px;margin-top:11px;padding-top:10px}
+  .lab-debug-check{width:100%;margin-left:0}
+  .lab-grid-controls{align-items:stretch}
+  .lab-generate-button{margin-left:0;flex:1 1 150px}
+  .lab-filter-box{padding:10px;margin-top:11px}
+  #lab-grid-filters{display:grid;grid-template-columns:1fr;gap:6px}
+  .pickrow{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 36px;gap:5px;padding:4px}
+  .pickrow select{width:100%}
+  .pickrow .clear{width:36px;padding:0}
+  .lab-specimen-stage{gap:12px}
+  .lab-specimen-visual .figure{width:100%;padding:6px}
+  .lab-comment-row{display:grid;grid-template-columns:1fr;gap:7px}
+  .lab-comment-row button{width:100%}
+  .lab-action-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .lab-action-row button{padding-inline:5px;font-size:11px}
+  .lab-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;max-width:none}
+  .cell{padding:4px;border-radius:11px}
+  .cell__lbl{padding:5px 1px 1px}
+  .cell__id,.cell__meta{font-size:9px}
+  .lab-grid-summary{gap:4px;margin:11px 0 8px}
+  .lab-grid-summary span{font-size:10px;padding-inline:7px}
+  #lab-saved-out .scroll{max-height:none;overflow:visible;border:0}
+  #lab-saved-out table.t{display:block;font-family:inherit;font-size:12px}
+  #lab-saved-out table.t thead{display:none}
+  #lab-saved-out table.t tbody{display:grid;gap:8px}
+  #lab-saved-out table.t tr.saved-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 10px;padding:9px;border:1px solid var(--line);border-radius:11px;background:var(--paper)}
+  #lab-saved-out table.t td{display:block;border:0;padding:2px 0;min-width:0}
+  #lab-saved-out table.t td[data-label]::before{content:attr(data-label);display:block;color:var(--fg-soft);font-size:10px;font-weight:800;line-height:1.25}
+  #lab-saved-out table.t td[data-label="seed"]{font-weight:900}
+  #lab-saved-out table.t td[data-label="issues"],#lab-saved-out table.t td[data-label="コメント"]{grid-column:1/-1;overflow-wrap:anywhere}
+  #lab-saved-out table.t td[data-label="操作"]{grid-column:1/-1;display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+  #lab-saved-out table.t td[data-label="操作"]::before{display:none}
+  #lab-saved-out .note-input{width:100%;font-size:12px}
+}
+@media (max-width:360px){
+  .lab-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .lab-action-row{grid-template-columns:1fr}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .cell{transition:none}
+}
 `;
 
 /** <style> をドキュメントへ 1 度だけ入れる。 */

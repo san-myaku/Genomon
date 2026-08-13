@@ -10,7 +10,8 @@ UI は変更後に `render()` を呼び直す。イミュータブル更新は�
 ```ts
 import type {
   GameState, Creature, Genotype, Phenotype, Stage, CareAction,
-  CareResult, ExhibitionScore, ShopItemDef, LifeState,
+  CareResult, ExhibitionScore, ShopItemDef, LifeState, FieldState,
+  StaffCandidate, StaffRole,
 } from '../core/types.ts';
 
 // ── 生成・進行 ─────────────────────────────────────────────
@@ -31,10 +32,14 @@ export interface TickReport {
   hatched: string[];
   /** この tick で成体になった個体 ID。 */
   grownUp: string[];
-  /** 新たに解放された機能 ID（'exhibition' | 'shop' | 'breeding' | 'collection'）。 */
+  /** 新たに解放された機能 ID（展示会・ショップ・交配・標本帳・ブリーダー・飼育員）。 */
   unlocked: string[];
   /** オフライン分をまとめて適用したときの経過ミリ秒（0 なら通常 tick）。 */
   offlineMs: number;
+  /** フィールドの清潔度・排泄物・配置が変化したか。 */
+  fieldChanged: boolean;
+  /** 排泄物の生成・ロボット清掃など、画面上で知らせるイベントが起きたか。 */
+  fieldEvent: boolean;
 }
 
 // ── 世話 ───────────────────────────────────────────────────
@@ -56,10 +61,68 @@ export function buyItem(state: GameState, itemId: string): { ok: boolean; reason
 /** 消耗品を個体に使う。装飾・設備は buyItem した時点で有効になるのでここは通さない。 */
 export function useItem(state: GameState, creatureId: string, itemId: string, now: number): CareResult;
 
+// ── 飼育フィールド ────────────────────────────────────────
+/** フィールドの排泄物を片付け、環境と個体の清潔度を回復する。 */
+export function cleanField(state: GameState, now: number): { ok: boolean; cleaned: number; reason?: string };
+export function cleanDropping(state: GameState, droppingId: string, now: number): { ok: boolean; cleaned: number; reason?: string };
+/** フィールド上の往復ルート・向き・歩き/走りを seed と時刻から決定する。保存不要・決定論的。 */
+export function fieldMotionFor(creature: Creature, now: number, index?: number, total?: number): {
+  x: number; y: number; scale: number; phase: number;
+  facing: -1 | 1; gait: 'rest' | 'walk' | 'run'; gaitPhaseMs: number;
+};
+/** 次の排泄までの目安（ms）。卵では null。 */
+export function nextDroppingIn(state: GameState, creature: Creature, now: number): number | null;
+/** ショップで購入済みの遊具を 12 マスのいずれかへ配置する。 */
+export function placeFieldItem(
+  state: GameState, itemId: string, slot: number, now: number,
+): { ok: boolean; reason?: string; placement?: import('../core/types.ts').FieldPlacement };
+/** 配置済みの遊具を外す（所有権は残る）。 */
+  export function removeFieldItem(state: GameState, itemId: string, now: number): { ok: boolean; reason?: string };
+
+// ── 飼育員 ────────────────────────────────────────────────
+/** 募集中の候補を作る。候補は worldSeed と募集回数から決まり、state に保存される。 */
+export function refreshStaffCandidates(state: GameState, now?: number): StaffCandidate[];
+/** 現在の候補を見送り、次の募集を出す。 */
+export function rerollStaffCandidates(state: GameState, now?: number): { ok: boolean; reason?: string; candidates?: StaffCandidate[] };
+/** 候補を雇い、採用費を支払う。給与は applyTick の時間経過で処理される。 */
+export function hireStaff(state: GameState, candidateId: string, now?: number): { ok: boolean; reason?: string; candidate?: StaffCandidate };
+/** 雇用中の飼育員を解雇する（支払済みの費用は戻らない）。 */
+export function dismissStaff(state: GameState, now?: number): { ok: boolean; reason?: string };
+export function hiredStaff(state: GameState): StaffCandidate | null;
+
+/** 個体名を正規化して変更する。空名・重複・16文字超などは失敗する。 */
+export function renameCreature(
+  state: GameState, creatureId: string, rawName: string, now?: number,
+): { ok: boolean; name?: string; reason?: string };
+export const CREATURE_NAME_MAX_LENGTH: 16;
+
 // ── 展示会 ─────────────────────────────────────────────────
 export function canExhibit(state: GameState, creatureId: string, now: number): { ok: boolean; reason?: string };
 /** 採点して報酬を state に反映し、結果を返す。演出は UI 側の責任。 */
 export function runExhibition(state: GameState, creatureId: string, now: number): ExhibitionScore;
+
+// ── 販売所・ブリーダー ──────────────────────────────────────
+/** 現在の個体を販売した場合の決定論的な見積額。state は変更しない。 */
+export function saleQuote(state: GameState, creatureId: string): SaleQuoteResult;
+export type SaleQuoteResult =
+  | { ok: true; quote: SaleQuote; creature: Creature }
+  | { ok: false; reason: string };
+export interface SaleQuote {
+  creatureId: string;
+  creatureName: string;
+  stage: Stage;
+  price: number;
+  base: number;
+  conditionBonus: number;
+  rarityBonus: number;
+  exhibitionBonus: number;
+  generationBonus: number;
+}
+/** ブリーダー資格を確認して個体を販売し、売上履歴に記録する。 */
+export function sellCreature(state: GameState, creatureId: string, now: number): SellResult;
+export type SellResult =
+  | { ok: true; quote: SaleQuote; record: import('../core/types.ts').SaleRecord }
+  | { ok: false; reason: string };
 
 // ── 交配 ───────────────────────────────────────────────────
 export function canBreed(state: GameState, aId: string, bId: string): { ok: boolean; reason?: string };
@@ -87,6 +150,9 @@ export function unlockHint(state: GameState, feature: keyof GameState['unlocks']
 /** 「次に何をすればよいか」の 1 行ガイド。UI のヘッダに常時出す。指示書 §25「次に何をすればよいか分かる」対応。 */
 export function nextObjective(state: GameState): { text: string; screen: string | null; creatureId?: string };
 ```
+
+`STAFF` は飼育員の採用費・給与・巡回間隔、`FIELD` はフィールドの排泄・清掃・配置の
+バランス正本として `src/game/index.ts` から再輸出する。
 
 ## 規約
 

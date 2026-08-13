@@ -152,8 +152,8 @@ function fixtureState(): GameState {
   s.activeCreatureId = 'c1';
   s.inventory = { springWater: 2, honeyMossBall: 1 };
   s.owned = ['sunnyLamp'];
-  s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: false, collection: true };
-  s.stats = { hatched: 2, grownUp: 1, bred: 0, exhibitions: 1, coinsEarned: 240, careActions: 31 };
+  s.unlocks = { nursery: true, exhibition: true, shop: true, breeding: false, collection: true, breeder: false, staff: false };
+  s.stats = { hatched: 2, grownUp: 1, bred: 0, exhibitions: 1, coinsEarned: 240, careActions: 31, staffCareActions: 0 };
   s.tutorial = { done: ['chooseEgg', 'firstCare'], current: 'firstExhibition' };
   return s;
 }
@@ -428,7 +428,7 @@ describe('coerceState による欠損補完', () => {
   const REQUIRED_KEYS: (keyof GameState)[] = [
     'version', 'createdAt', 'updatedAt', 'seedCounter', 'worldSeed', 'coins',
     'creatures', 'pendingEggs', 'inventory', 'owned', 'unlocks', 'capacity',
-    'settings', 'tutorial', 'stats', 'activeCreatureId', 'future',
+    'settings', 'tutorial', 'stats', 'activeCreatureId', 'field', 'breeder', 'future',
   ];
 
   it('必須フィールドを 1 つずつ欠落させても、すべてデフォルトで補完される', () => {
@@ -646,7 +646,7 @@ describe('SHOP_ITEMS の整合性', () => {
 
   it('consumable:false なら passive を持つか decor である', () => {
     for (const it of SHOP_ITEMS.filter((i) => !i.consumable)) {
-      const ok = it.passive !== undefined || it.kind === 'decor';
+      const ok = it.passive !== undefined || it.capacityIncrease !== undefined || it.kind === 'decor';
       expect(ok, `${it.id} は永続アイテムなのに passive も decor でもない`).toBe(true);
     }
   });
@@ -657,7 +657,7 @@ describe('SHOP_ITEMS の整合性', () => {
       expect(it.desc.length, it.id).toBeGreaterThan(0);
       expect(it.effectText.length, it.id).toBeGreaterThan(0);
       expect(['food', 'drink', 'care', 'growth', 'health', 'decor', 'equipment']).toContain(it.kind);
-      expect(['egg', 'juvenile', 'adult', 'any', 'room']).toContain(it.target);
+      expect(['egg', 'juvenile', 'adult', 'any', 'room', 'field']).toContain(it.target);
     }
   });
 
@@ -675,7 +675,7 @@ describe('SHOP_ITEMS の整合性', () => {
     expect(SHOP_ITEMS.filter((i) => i.kind === 'equipment').length).toBeGreaterThanOrEqual(2);
     // 増やしすぎない（指示書 §8）。
     expect(SHOP_ITEMS.length).toBeGreaterThanOrEqual(10);
-    expect(SHOP_ITEMS.length).toBeLessThanOrEqual(12);
+    expect(SHOP_ITEMS.length).toBeLessThanOrEqual(22);
   });
 
   it('上級飼料は無料の基本飼料より効果が高い', () => {

@@ -22,6 +22,8 @@ import { advanceStageIfReady } from './growth.ts';
 import { ownedPassives, passiveMultiplier } from './shop.ts';
 import { healBrokenStats, noteNow } from './state.ts';
 import { refreshUnlocks } from './unlocks.ts';
+import { advanceField } from './field.ts';
+import { advanceStaff } from './staff.ts';
 
 export interface TickReport {
   /** この tick で孵化した個体 ID。 */
@@ -32,6 +34,14 @@ export interface TickReport {
   unlocked: string[];
   /** オフライン分をまとめて適用したときの経過ミリ秒（0 なら通常 tick）。 */
   offlineMs: number;
+  /** フィールドの排泄・清掃・環境状態に変化があったか。保存判断に使う。 */
+  fieldChanged: boolean;
+  /** 排泄物の生成・ロボット清掃など、画面上でイベントとして知らせる変化。 */
+  fieldEvent: boolean;
+  /** 飼育員の自動世話・給与など、状態が変化したか。 */
+  staffChanged: boolean;
+  /** 飼育員が世話をした、給与を払った、または未払いで離職したか。 */
+  staffEvent: boolean;
 }
 
 /**
@@ -71,13 +81,23 @@ function clampStat(v: number, fallback: number): number {
 export function applyTick(state: GameState, now: number): TickReport {
   noteNow(now);
 
-  const report: TickReport = { hatched: [], grownUp: [], unlocked: [], offlineMs: 0 };
+  const report: TickReport = {
+    hatched: [],
+    grownUp: [],
+    unlocked: [],
+    offlineMs: 0,
+    fieldChanged: false,
+    fieldEvent: false,
+    staffChanged: false,
+    staffEvent: false,
+  };
 
   // 設備の永続効果（API.md 規約 1: 倍率 = 1 + Σpassive、下限 0.1）。
   const passives = ownedPassives(state);
   const growthMul = passiveMultiplier(passives.growthRate);
   const hatchMul = passiveMultiplier(passives.hatchRate);
   const hungerDecayMul = passiveMultiplier(passives.hungerDecay);
+  const cleanlinessDecayMul = passiveMultiplier(passives.cleanlinessDecay);
   const moodDecayMul = passiveMultiplier(passives.moodDecay);
   const healthRegenMul = passiveMultiplier(passives.healthRegen);
 
@@ -115,7 +135,7 @@ export function applyTick(state: GameState, now: number): TickReport {
     const d = sec * stageScale * decayScale;
     life.hunger = clampStat(life.hunger - DECAY.hunger * d * hungerDecayMul, life.hunger);
     life.hydration = clampStat(life.hydration - DECAY.hydration * d, life.hydration);
-    life.cleanliness = clampStat(life.cleanliness - DECAY.cleanliness * d, life.cleanliness);
+    life.cleanliness = clampStat(life.cleanliness - DECAY.cleanliness * d * cleanlinessDecayMul, life.cleanliness);
     life.mood = clampStat(life.mood - DECAY.mood * d * moodDecayMul, life.mood);
 
     // ── 健康（世話の質の「遅れた鏡」。config.DECAY の健康モデルを参照）──
@@ -161,6 +181,12 @@ export function applyTick(state: GameState, now: number): TickReport {
     else if (change.evolved === 'adult') report.grownUp.push(c.id);
   }
 
+  const fieldReport = advanceField(state, now);
+  report.fieldChanged = fieldReport.changed;
+  report.fieldEvent = fieldReport.addedDroppings > 0 || fieldReport.removedDroppings > 0;
+  const staffReport = advanceStaff(state, now);
+  report.staffChanged = staffReport.changed;
+  report.staffEvent = staffReport.event;
   report.unlocked = refreshUnlocks(state);
   state.updatedAt = now;
   return report;

@@ -26,7 +26,15 @@ import { toast } from '../components/toast.ts';
 import { PERSONALITY_AXES, RARITY_LABEL, STAGE_LABEL, generationLabel } from '../format.ts';
 import { rarityMaskNote, traitMaskNote, visibleRarity, visibleTraits } from '../traits.ts';
 import { findReleasedById, recordRelease, releasedAsCreature } from '../releasedLog.ts';
-import { capacityUsed, creaturesByStage, findCreature, getPhenotype, releaseCreature } from '../gameApi.ts';
+import {
+  capacityUsed,
+  creaturesByStage,
+  findCreature,
+  getPhenotype,
+  releaseCreature,
+  renameCreature,
+  CREATURE_NAME_MAX_LENGTH,
+} from '../gameApi.ts';
 
 /** 親を 1 体ぶん解決した結果。手もとに いる／記録に のこっている／たどれない の 3 通り。 */
 interface ParentView {
@@ -274,6 +282,7 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
         // 枠が満杯で進行が止まったとき、目標行のボタンがこの画面へ直接飛ばしてくる。
         `<div class="row" style="margin-bottom:var(--sp-3)">` +
         `<button type="button" class="btn btn--sm" data-act="care">育成室で 世話する</button>` +
+        `<button type="button" class="btn btn--ghost btn--sm" data-act="rename">名前を 変える</button>` +
         `<span class="grow"></span>` +
         `<button type="button" class="btn btn--ghost btn--sm btn--release" data-act="release">この子を 手放す</button>` +
         `</div>` +
@@ -299,6 +308,40 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       creature: c,
       reducedMotion: app.reducedMotion,
     });
+  }
+
+  async function doRename(c: Creature): Promise<void> {
+    const picked = await openDialog({
+      title: `${c.name} の 名前を 変える`,
+      icon: 'patch',
+      bodyHtml:
+        `<label class="field"><span class="field__label">新しい名前</span>` +
+        `<input class="input" data-rename type="text" value="${esc(c.name)}" maxlength="${CREATURE_NAME_MAX_LENGTH}" ` +
+        `autocomplete="off" autocapitalize="none" autofocus aria-describedby="rename-help">` +
+        `</label>` +
+        `<p id="rename-help" class="section__note" style="margin:var(--sp-2) 0 0">` +
+        `${CREATURE_NAME_MAX_LENGTH} 文字以内。同じ名前は 付けられません。</p>`,
+      actions: [
+        { label: 'やめる', value: 'cancel', kind: 'ghost', cancel: true },
+        { label: '保存する', value: 'save', kind: 'primary' },
+      ],
+    });
+    if (picked !== 'save') return;
+
+    const dialog = document.querySelector<HTMLDialogElement>('.dlg');
+    const input = dialog?.querySelector<HTMLInputElement>('[data-rename]');
+    const result = renameCreature(app.state, c.id, input?.value ?? '');
+    if (!result.ok) {
+      sfx.play('deny');
+      toast(result.reason ?? '名前を 変えられませんでした。', 'warn');
+      return;
+    }
+
+    sfx.play('tap');
+    app.save('名前変更');
+    toast(`名前を「${result.name}」に 変えました。`, 'good');
+    app.rerender();
+    render();
   }
 
   /**
@@ -357,6 +400,13 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       if (!c) return;
       sfx.play('tap');
       void doRelease(c);
+      return;
+    }
+    if (act === 'rename') {
+      const c = findCreature(app.state, id);
+      if (!c) return;
+      sfx.play('tap');
+      void doRename(c);
     }
   });
 

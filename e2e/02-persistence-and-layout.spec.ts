@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { freshStart, readSave, creatureSvgFingerprint, horizontalOverflow } from './helpers.ts';
 
-const ROUTES = ['/nursery', '/collection', '/exhibition', '/shop', '/breeding', '/settings', '/title'];
+const ROUTES = ['/nursery', '/field', '/staff', '/collection', '/exhibition', '/shop', '/breeding', '/market', '/settings', '/title'];
 
 test.describe('保存・再現性・レイアウト', () => {
   test.setTimeout(120_000);

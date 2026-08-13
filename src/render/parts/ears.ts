@@ -204,6 +204,84 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
       s += ellipse(0, -L * 0.34, bw * 0.42, L * 0.3, { fill: inner, opacity: 0.6 });
       return { svg: s, box: { x: -bw - 2, y: -L - 2, w: bw * 2 + 4, h: L + 8 } };
     }
+    case 'catEar': {
+      // ねこ耳: 先端を丸めた三角形と、薄い桃色の内耳。
+      const bw = 12.5 * k;
+      const L = 34 * k;
+      s += organShapeOpen(
+        ctx,
+        rootedPath(
+          { x: -bw, y: 5 },
+          `C${n(-bw * 0.94)} ${n(-L * 0.28)} ${n(-bw * 0.62)} ${n(-L * 0.72)} 0 ${n(-L)}` +
+            `C${n(bw * 0.62)} ${n(-L * 0.72)} ${n(bw * 0.94)} ${n(-L * 0.28)} ${n(bw)} 5`,
+          { x: bw, y: 5 },
+          inw,
+          dip,
+        ),
+        skin,
+        w,
+      );
+      s += path(
+        `M${n(-bw * 0.56)} ${n(0.5)}C${n(-bw * 0.5)} ${n(-L * 0.3)} ${n(-bw * 0.25)} ${n(-L * 0.6)} 0 ${n(-L * 0.78)}` +
+          `C${n(bw * 0.25)} ${n(-L * 0.6)} ${n(bw * 0.5)} ${n(-L * 0.3)} ${n(bw * 0.56)} 0Z`,
+        { fill: mix(inner, c.petal, 0.58), opacity: 0.84 },
+      );
+      s += path(`M0 ${n(-L * 0.7)}L${n(-bw * 0.2)} ${n(-L * 0.08)}M0 ${n(-L * 0.7)}L${n(bw * 0.2)} ${n(-L * 0.08)}`, {
+        stroke: darken(inner, 0.24),
+        width: ctx.strokeThin * 0.6,
+        opacity: 0.7,
+      });
+      return { svg: s, box: { x: -bw - 3, y: -L - 3, w: bw * 2 + 6, h: L + 10 } };
+    }
+    case 'bearEar': {
+      // くま耳: 頭の横にちょこんと付く、低く丸い耳。
+      const bw = 11 * k;
+      const L = 22 * k;
+      const cy = -L * 0.42;
+      s += ellipse(0, cy, bw, L * 0.58, {
+        fill: skin,
+        stroke: c.inkPaint,
+        // くま耳は輪郭が短く丸いので、他の器官と同じ係数では
+        // 線が面積を食いすぎて「黒い耳」に見える。
+        width: w * 1.3,
+      });
+      s += ellipse(0, cy + L * 0.03, bw * 0.58, L * 0.34, {
+        fill: mix(inner, c.body, 0.35),
+        opacity: 0.72,
+      });
+      s += ellipse(-bw * 0.25, cy - L * 0.2, bw * 0.2, L * 0.12, { fill: '#fffdf8', opacity: 0.22 });
+      return { svg: s, box: { x: -bw - 3, y: -L - 3, w: bw * 2 + 6, h: L + 10 } };
+    }
+    case 'gill': {
+      // !!このコードは消さないこと!!
+      // `gill` は CAT_LOCI から撤去済みだが、旧セーブの遺伝子 ID を
+      // 読み込んだ個体を無地へ化けさせないため、描画だけは残す。
+      // アホロートルひれ: 根元から三段に分かれる柔らかな外ひれ。
+      // 小さなセルでも枝が塊にならないよう、枝数を三つに絞り、
+      // 輪郭線と明るい内側線を重ねて水中の薄い器官として見せる。
+      const L = 38 * k;
+      const stemPts: Vec[] = [
+        { x: 0, y: 4 },
+        { x: 2.5 * k, y: -L * 0.28 },
+        { x: 1.8 * k, y: -L * 0.62 },
+        { x: 0, y: -L },
+      ];
+      s += path(polyPath(stemPts, false), { stroke: c.inkPaint, width: ctx.strokeThin * 1.55, linecap: 'round' });
+      s += path(polyPath(stemPts, false), { stroke: mix(c.petal, c.bodyLight, 0.28), width: ctx.strokeThin * 0.72, linecap: 'round', opacity: 0.9 });
+      for (let i = 0; i < 3; i++) {
+        const y = -L * (0.24 + i * 0.2);
+        const len = (15 - i * 2) * k;
+        const x = 2.2 * k;
+        const ang = i === 0 ? -42 : i === 1 ? -58 : -74;
+        s += path(leafPath(x, y, len, 5.2 * k, ang, 0.38), {
+          fill: organGrad(ctx, 'gill', mix(c.petal, c.accent, 0.3)),
+          stroke: c.inkPaint,
+          width: ctx.strokeThin * 0.76,
+          opacity: 0.94,
+        });
+      }
+      return { svg: s, box: { x: -12 * k, y: -L - 4 * k, w: 24 * k, h: L + 10 * k } };
+    }
     case 'round': {
       const bw = 13 * k;
       const L = 27 * k;
@@ -345,6 +423,307 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
   }
 }
 
+/** 耳先色の配色。参考画像の pink / cream / choco を個体ごとに持たせる。 */
+interface EarTipPalette {
+  fill: string;
+}
+
+const EAR_TIP_PALETTES: readonly EarTipPalette[] = [
+  { fill: '#e58aaa' },
+  { fill: '#f0d29f' },
+  { fill: '#8b5b43' },
+];
+
+function earTipPalette(ctx: DrawCtx): EarTipPalette {
+  // 色の選択も個体の seed から分離した名前付き系列で決める。
+  return EAR_TIP_PALETTES[ctx.rng('earTipPalette').int(0, EAR_TIP_PALETTES.length - 1)]!;
+}
+
+interface Cubic {
+  a: Vec;
+  b: Vec;
+  c: Vec;
+  d: Vec;
+}
+
+function mixVec(a: Vec, b: Vec, t: number): Vec {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/** 2本の外周曲線を途中から先端まで切り出した、輪郭線なしの色面。 */
+function cubicTip(left: Cubic, right: Cubic, startT: number, bendY: number, fill: string): string {
+  const l = cubicSplit(left, startT).right;
+  const r = cubicSplit(right, startT).right;
+  const d =
+    `M${n(l.a.x)} ${n(l.a.y)}` +
+    `C${n(l.b.x)} ${n(l.b.y)} ${n(l.c.x)} ${n(l.c.y)} ${n(l.d.x)} ${n(l.d.y)}` +
+    `C${n(r.c.x)} ${n(r.c.y)} ${n(r.b.x)} ${n(r.b.y)} ${n(r.a.x)} ${n(r.a.y)}` +
+    `C${n(r.a.x)} ${n(r.a.y + bendY)} ${n(l.a.x)} ${n(l.a.y + bendY)} ${n(l.a.x)} ${n(l.a.y)}Z`;
+  return path(d, { fill });
+}
+
+function cubicSplit(curve: Cubic, t: number): { left: Cubic; right: Cubic } {
+  const ab = mixVec(curve.a, curve.b, t);
+  const bc = mixVec(curve.b, curve.c, t);
+  const cd = mixVec(curve.c, curve.d, t);
+  const abc = mixVec(ab, bc, t);
+  const bcd = mixVec(bc, cd, t);
+  const mid = mixVec(abc, bcd, t);
+  return {
+    left: { a: curve.a, b: ab, c: abc, d: mid },
+    right: { a: mid, b: bcd, c: cd, d: curve.d },
+  };
+}
+
+function earTipOutline(ctx: DrawCtx, d: string, w: number): string {
+  return path(d, {
+    fill: 'none',
+    stroke: ctx.colors.inkPaint,
+    width: w * 1.9,
+    linejoin: 'round',
+    linecap: 'butt',
+  });
+}
+
+function pointyEarTip(
+  ctx: DrawCtx,
+  left: Cubic,
+  right: Cubic,
+  outerOpen: string,
+  w: number,
+  fill: string,
+  startT: number,
+  bendY: number,
+): string {
+  // 外周に接するところまで色面を広げ、最後に外周だけを引き直す。
+  // これで内部に「別パーツの輪郭」は出ず、耳の面の色が変わって見える。
+  return cubicTip(left, right, startT, bendY, fill) + earTipOutline(ctx, outerOpen, w);
+}
+
+function ellipseTip(ctx: DrawCtx, cy: number, rx: number, ry: number, w: number, fill: string): string {
+  const boundaryY = cy + ry * 0.08;
+  const y = (boundaryY - cy) / ry;
+  const x = rx * Math.sqrt(Math.max(0, 1 - y * y));
+  const top = cy - ry;
+  const d =
+    `M${n(-x)} ${n(boundaryY)}` +
+    `C${n(-x - rx * 0.06)} ${n(boundaryY - ry * 0.42)} ${n(-rx * 0.4)} ${n(top + ry * 0.06)} 0 ${n(top)}` +
+    `C${n(rx * 0.4)} ${n(top + ry * 0.06)} ${n(x + rx * 0.06)} ${n(boundaryY - ry * 0.42)} ${n(x)} ${n(boundaryY)}` +
+    `C${n(x)} ${n(boundaryY + ry * 0.16)} ${n(-x)} ${n(boundaryY + ry * 0.16)} ${n(-x)} ${n(boundaryY)}Z`;
+  return path(d, { fill }) + ellipse(0, cy, rx, ry, {
+    fill: 'none',
+    stroke: ctx.colors.inkPaint,
+    width: w * 1.3,
+  });
+}
+
+function leafTip(
+  ctx: DrawCtx,
+  x0: number,
+  y0: number,
+  len: number,
+  wid: number,
+  angDeg: number,
+  bend: number,
+  w: number,
+  fill: string,
+): string {
+  const a = (angDeg * Math.PI) / 180;
+  const ux = Math.cos(a);
+  const uy = Math.sin(a);
+  const nx = -uy;
+  const ny = ux;
+  const tip = { x: x0 + ux * len, y: y0 + uy * len };
+  const left: Cubic = {
+    a: { x: x0, y: y0 },
+    b: { x: x0 + ux * len * 0.28 + nx * wid, y: y0 + uy * len * 0.28 + ny * wid },
+    c: { x: x0 + ux * len * 0.74 + nx * wid * (1 - bend), y: y0 + uy * len * 0.74 + ny * wid * (1 - bend) },
+    d: tip,
+  };
+  const right: Cubic = {
+    a: { x: x0, y: y0 },
+    b: { x: x0 + ux * len * 0.28 - nx * wid * 0.72, y: y0 + uy * len * 0.28 - ny * wid * 0.72 },
+    c: { x: x0 + ux * len * 0.74 - nx * wid * (1 - bend) * 0.72, y: y0 + uy * len * 0.74 - ny * wid * (1 - bend) * 0.72 },
+    d: tip,
+  };
+  return cubicTip(left, right, 0.48, -Math.max(1.5, len * 0.04), fill) + earTipOutline(ctx, leafPath(x0, y0, len, wid, angDeg, bend), w);
+}
+
+function quadraticPoint(a: Vec, b: Vec, c: Vec, t: number): Vec {
+  const ab = mixVec(a, b, t);
+  const bc = mixVec(b, c, t);
+  return mixVec(ab, bc, t);
+}
+
+/**
+ * 稀に発現する耳先の別色。
+ *
+ * 色面は耳の内側へ置く小片ではなく、元の耳の外周曲線をそのまま使う。
+ * 先端側の外周まで塗るので、参考画像のように「耳そのものの先が別色」と読める。
+ */
+function earTipShape(ctx: DrawCtx, kind: string, k: number, rootDir: Vec = { x: 0.55, y: 1 }): string {
+  const tip = earTipPalette(ctx).fill;
+  const w = ctx.strokeW;
+
+  switch (kind) {
+    case 'nub': {
+      const bw = 11.5 * k;
+      const L = 15 * k;
+      const a = { x: -bw, y: 3 };
+      const b = { x: bw, y: 3 };
+      const nose = { x: 0, y: -L };
+      const left = { a, b: { x: -bw * 1.05, y: -L * 0.75 }, c: { x: -bw * 0.5, y: -L }, d: nose };
+      const right = { a: b, b: { x: bw * 1.05, y: -L * 0.75 }, c: { x: bw * 0.5, y: -L }, d: nose };
+      const outer = `M${n(a.x)} ${n(a.y)}C${n(left.b.x)} ${n(left.b.y)} ${n(left.c.x)} ${n(left.c.y)} ${n(nose.x)} ${n(nose.y)}C${n(right.c.x)} ${n(right.c.y)} ${n(right.b.x)} ${n(right.b.y)} ${n(b.x)} ${n(b.y)}`;
+      return pointyEarTip(ctx, left, right, outer, w, tip, 0.44, 2.5 * k);
+    }
+    case 'catEar': {
+      const bw = 12.5 * k;
+      const L = 34 * k;
+      const a = { x: -bw, y: 5 };
+      const b = { x: bw, y: 5 };
+      const nose = { x: 0, y: -L };
+      const left = { a, b: { x: -bw * 0.94, y: -L * 0.28 }, c: { x: -bw * 0.62, y: -L * 0.72 }, d: nose };
+      const right = { a: b, b: { x: bw * 0.94, y: -L * 0.28 }, c: { x: bw * 0.62, y: -L * 0.72 }, d: nose };
+      const outer = rootedPath(
+        a,
+        `C${n(left.b.x)} ${n(left.b.y)} ${n(left.c.x)} ${n(left.c.y)} ${n(nose.x)} ${n(nose.y)}C${n(right.c.x)} ${n(right.c.y)} ${n(right.b.x)} ${n(right.b.y)} ${n(b.x)} ${n(b.y)}`,
+        b,
+        { x: 0.55, y: 1 },
+        18 * k,
+      );
+      return pointyEarTip(ctx, left, right, outer, w, tip, 0.52, 4.5 * k);
+    }
+    case 'round': {
+      const bw = 13 * k;
+      const L = 27 * k;
+      const a = { x: -bw, y: 5 };
+      const b = { x: bw, y: 5 };
+      const nose = { x: 0, y: -L };
+      const left = { a, b: { x: -bw * 1.16, y: -L * 0.5 }, c: { x: -bw * 0.62, y: -L }, d: nose };
+      const right = { a: b, b: { x: bw * 1.16, y: -L * 0.5 }, c: { x: bw * 0.62, y: -L }, d: nose };
+      const outer = rootedPath(
+        a,
+        `C${n(left.b.x)} ${n(left.b.y)} ${n(left.c.x)} ${n(left.c.y)} ${n(nose.x)} ${n(nose.y)}C${n(right.c.x)} ${n(right.c.y)} ${n(right.b.x)} ${n(right.b.y)} ${n(b.x)} ${n(b.y)}`,
+        b,
+        { x: 0.55, y: 1 },
+        18 * k,
+      );
+      return pointyEarTip(ctx, left, right, outer, w, tip, 0.5, 4.5 * k);
+    }
+    case 'roundLeafEar': {
+      const bw = 12.5 * k;
+      const L = 32 * k;
+      const a = { x: -bw, y: 5 };
+      const b = { x: bw, y: 5 };
+      const nose = { x: 0, y: -L };
+      const left = { a, b: { x: -bw * 1.2, y: -L * 0.46 }, c: { x: -bw * 0.72, y: -L * 0.8 }, d: nose };
+      const right = { a: b, b: { x: bw * 1.2, y: -L * 0.46 }, c: { x: bw * 0.72, y: -L * 0.8 }, d: nose };
+      const outer = rootedPath(
+        a,
+        `C${n(left.b.x)} ${n(left.b.y)} ${n(left.c.x)} ${n(left.c.y)} ${n(nose.x)} ${n(nose.y)}C${n(right.c.x)} ${n(right.c.y)} ${n(right.b.x)} ${n(right.b.y)} ${n(b.x)} ${n(b.y)}`,
+        b,
+        { x: 0.55, y: 1 },
+        18 * k,
+      );
+      return pointyEarTip(ctx, left, right, outer, w, tip, 0.5, 4.5 * k);
+    }
+    case 'longEar': {
+      const bw = 8.5 * k;
+      const L = 44 * k;
+      const a = { x: -bw, y: 5 };
+      const b = { x: bw, y: 5 };
+      const nose = { x: 0, y: -L };
+      const left = { a, b: { x: -bw * 1.5, y: -L * 0.5 }, c: { x: -bw * 0.8, y: -L }, d: nose };
+      const right = { a: b, b: { x: bw * 1.5, y: -L * 0.5 }, c: { x: bw * 0.8, y: -L }, d: nose };
+      const outer = rootedPath(
+        a,
+        `C${n(left.b.x)} ${n(left.b.y)} ${n(left.c.x)} ${n(left.c.y)} ${n(nose.x)} ${n(nose.y)}C${n(right.c.x)} ${n(right.c.y)} ${n(right.b.x)} ${n(right.b.y)} ${n(b.x)} ${n(b.y)}`,
+        b,
+        { x: 0.55, y: 1 },
+        18 * k,
+      );
+      return pointyEarTip(ctx, left, right, outer, w, tip, 0.48, 5 * k);
+    }
+    case 'bearEar': {
+      const bw = 11 * k;
+      const L = 22 * k;
+      const cy = -L * 0.42;
+      const ry = L * 0.58;
+      return ellipseTip(ctx, cy, bw, ry, w, tip);
+    }
+    case 'flopEar': {
+      const L = 34 * k;
+      const bw = 11 * k;
+      const a = { x: -bw * 0.7, y: 0 };
+      const b = { x: bw * 0.72, y: -4 };
+      const nose = { x: -bw * 0.1, y: L };
+      const left = { a, b: { x: -bw * 1.5, y: L * 0.34 }, c: { x: -bw * 1.2, y: L * 0.86 }, d: nose };
+      const right = { a: b, b: { x: bw * 1.25, y: L * 0.34 }, c: { x: bw * 1.1, y: L * 0.9 }, d: nose };
+      const outer = rootedPath(
+        a,
+        `C${n(left.b.x)} ${n(left.b.y)} ${n(left.c.x)} ${n(left.c.y)} ${n(nose.x)} ${n(nose.y)}C${n(right.c.x)} ${n(right.c.y)} ${n(right.b.x)} ${n(right.b.y)} ${n(b.x)} ${n(b.y)}`,
+        b,
+        { x: 1, y: 0.15 },
+        18 * k,
+      );
+      return pointyEarTip(ctx, left, right, outer, w, tip, 0.5, -4 * k);
+    }
+    case 'leafEar': {
+      const L = 32 * k;
+      const wid = 11 * k;
+      // 本体の葉耳と同じ、配置後のローカル付け根方向を使う。
+      // 固定ベクトルだと耳を回転・左右反転したあとに先端色だけが
+      // 元の座標へ残り、「枠と耳がズレた」ように見える。
+      const inw = rootDir;
+      const ox = inw.x * 18 * k;
+      const oy = 2 + inw.y * 18 * k;
+      const dx = -ox;
+      const dy = -L - oy;
+      const len = Math.hypot(dx, dy);
+      const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+      const wid2 = wid * (len / L);
+      return leafTip(ctx, ox, oy, len, wid2, ang, 0.34, w, tip);
+    }
+    case 'tuft': {
+      const L = 26 * k;
+      let out = '';
+      for (let i = -1; i <= 1; i++) {
+        const ll = L * (1 - Math.abs(i) * 0.28);
+        const a = { x: i * 4 * k, y: 3 };
+        const b = { x: i * 5 * k, y: 3 - ll * 0.6 };
+        const c = { x: i * 9 * k, y: -ll };
+        const start = quadraticPoint(a, b, c, 0.5);
+        const control = mixVec(b, c, 0.5);
+        out += path(`M${n(start.x)} ${n(start.y)}Q${n(control.x)} ${n(control.y)} ${n(c.x)} ${n(c.y)}`, {
+          stroke: tip,
+          width: Math.max(2.1 * k, ctx.strokeThin * 1.1),
+          linecap: 'round',
+        });
+      }
+      return out;
+    }
+    case 'gill': {
+      const L = 38 * k;
+      let out = path(`M${n(1.8 * k)} ${n(-L * 0.62)}L0 ${n(-L)}`, {
+        stroke: tip,
+        width: ctx.strokeThin * 1.15,
+        linecap: 'round',
+      });
+      for (let i = 0; i < 3; i++) {
+        const y = -L * (0.24 + i * 0.2);
+        const len = (15 - i * 2) * k;
+        const x = 2.2 * k;
+        const ang = i === 0 ? -42 : i === 1 ? -58 : -74;
+        out += leafTip(ctx, x, y, len, 5.2 * k, ang, 0.38, ctx.strokeThin * 0.76, tip);
+      }
+      return out;
+    }
+    default:
+      return '';
+  }
+}
+
 const EAR_TILT: Record<string, number> = {
   nub: 24,
   round: 28,
@@ -360,6 +739,9 @@ const EAR_TILT: Record<string, number> = {
   tuft: 24,
   leafEar: 34,
   roundLeafEar: 30,
+  catEar: 25,
+  bearEar: 28,
+  gill: 18,
 };
 
 /**
@@ -379,6 +761,9 @@ const EAR_ROOT_DIR: Record<string, Vec> = {
   tuft: { x: 0.55, y: 1 },
   leafEar: { x: 0.55, y: 1 },
   roundLeafEar: { x: 0.55, y: 1 },
+  catEar: { x: 0.55, y: 1 },
+  bearEar: { x: 0.55, y: 1 },
+  gill: { x: 0.55, y: 1 },
   // たれみみは付け根が **上** にあり、耳は下へ垂れる。
   // ここで下へ伸ばすと耳自身の内部へ潜るだけで体に届かないので、
   // ほぼ真横（内向き）に伸ばす。
@@ -407,7 +792,7 @@ export function buildEars(ctx: DrawCtx): PartOut[] {
   if (!kind || kind === 'none') return [];
   const s = ctx.shape;
   const H = s.botY - s.topY;
-  const yFrac = kind === 'flopEar' ? 0.18 : 0.12;
+  const yFrac = kind === 'flopEar' ? 0.18 : kind === 'gill' ? 0.22 : 0.12;
   const ay = s.topY + H * yFrac;
   const rng = ctx.rng('ears');
   const asym = ctx.pheno.asymmetry;
@@ -421,7 +806,13 @@ export function buildEars(ctx: DrawCtx): PartOut[] {
     const jitterK = 1 + asym * rng.float(-0.11, 0.11);
     // すその向きは置いたあとの角度に依存するので、先に角度を決める。
     const ang = side * EAR_TILT[kind]! + jitterA * side;
-    const loc = earShape(ctx, kind, k * jitterK, rootDirLocal(kind, side, ang));
+    const localK = k * jitterK;
+    const rootDir = rootDirLocal(kind, side, ang);
+    const baseLoc = earShape(ctx, kind, localK, rootDir);
+    const loc =
+      ctx.parts.earTip === 'tip'
+        ? { ...baseLoc, svg: baseLoc.svg + earTipShape(ctx, kind, localK, rootDir) }
+        : baseLoc;
     if (!loc.svg) continue;
     const p = place(loc, ax, ay, ang, 1);
     svg += p.svg;
@@ -797,6 +1188,12 @@ const HORN_BOTH_EXTRA_TILT: Record<string, number> = {
   twin: 8,
   spiral: 2,
   crystalHorn: 8,
+  nubHorn: 5,
+  coneHorn: 6,
+  curlHorn: 8,
+  goatHorn: 10,
+  ramHorn: 6,
+  coralHorn: 10,
 };
 
 export function buildAntennae(ctx: DrawCtx): PartOut[] {
@@ -813,7 +1210,14 @@ export function buildAntennae(ctx: DrawCtx): PartOut[] {
   // （`ANT_BOTH_AX_FACTOR` のコメントを参照）。単独発現では従来どおり 0.5。
   const axFactor = both ? (ANT_BOTH_AX_FACTOR[kind] ?? 0.3) : 0.5;
   const rng = ctx.rng('antennae');
-  const k = clamp(0.85 + ctx.pheno.size * 0.2, 0.85, 1.15);
+  const normalK = clamp(0.85 + ctx.pheno.size * 0.2, 0.85, 1.15);
+  // ふわり（feather）は同じ種類でも羽毛の長さに個体差を持たせる。
+  // decorAmount は seed から再構成される連続値なので、乱数を足さずに
+  // 「現状サイズ〜最大ほぼ2倍」の幅を作れる。
+  const k =
+    kind === 'feather'
+      ? clamp(0.76 + ctx.pheno.decorAmount * 1.15 + ctx.pheno.size * 0.12, 0.8, 2)
+      : normalK;
   let svg = '';
   let bbox: Box | undefined;
 
@@ -864,6 +1268,71 @@ export function buildAntennae(ctx: DrawCtx): PartOut[] {
  */
 const HORN_DIP = 4;
 
+interface HornBand {
+  svg: string;
+  center: Vec[];
+  left: Vec[];
+  right: Vec[];
+}
+
+/**
+ * 角の芯線を、先細りした「面」に変換する。
+ *
+ * 線幅だけで角を描くと、縮小表示では触角や毛糸のように見える。
+ * 角は根元から先端まで幅のあるシルエットとして作り、内部の節と
+ * ハイライトはその面の上に後置きする。`widths` は片側の半幅。
+ */
+function hornBand(ctx: DrawCtx, center: readonly Vec[], widths: readonly number[], fill: string, w: number): HornBand {
+  const left: Vec[] = [];
+  const right: Vec[] = [];
+  for (let i = 0; i < center.length; i++) {
+    const p = center[i]!;
+    const prev = center[Math.max(0, i - 1)]!;
+    const next = center[Math.min(center.length - 1, i + 1)]!;
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const half = Math.max(0.7, widths[i] ?? widths[widths.length - 1] ?? 1);
+    left.push({ x: p.x + nx * half, y: p.y + ny * half });
+    right.push({ x: p.x - nx * half, y: p.y - ny * half });
+  }
+
+  // 左縁を先端まで進み、先端を横切って右縁を根元へ戻る一筆の輪郭。
+  // `organShapeOpen` は根元だけを塗りで閉じ、そこには線を引かない。
+  const leftD = pathOpen(left, 0.76);
+  const rightRev = [...right].reverse();
+  const rightD = pathOpen(rightRev, 0.76);
+  const firstCurve = rightD.indexOf('C');
+  const rightTail = firstCurve >= 0 ? rightD.slice(firstCurve) : rightD.slice(rightD.indexOf('L'));
+  const outline = `${leftD}L${n(rightRev[0]!.x)} ${n(rightRev[0]!.y)}${rightTail}`;
+  return { svg: organShapeOpen(ctx, outline, fill, w), center: [...center], left, right };
+}
+
+function hornBandHighlight(ctx: DrawCtx, band: HornBand, color: string, fraction = 0.68): string {
+  const count = Math.max(2, Math.min(band.left.length, Math.ceil(band.left.length * fraction)));
+  return path(pathOpen(band.left.slice(0, count), 0.76), {
+    stroke: lighten(color, 0.34),
+    width: ctx.strokeThin * 0.72,
+    opacity: 0.76,
+    linecap: 'round',
+  });
+}
+
+function hornBandRidge(ctx: DrawCtx, band: HornBand, index: number, color: string, opacity = 0.66): string {
+  const i = Math.max(0, Math.min(band.center.length - 1, index));
+  const l = band.left[i]!;
+  const r = band.right[i]!;
+  const p = band.center[i]!;
+  return path(`M${n(l.x)} ${n(l.y)}Q${n(p.x)} ${n(p.y + 1.5)} ${n(r.x)} ${n(r.y)}`, {
+    stroke: color,
+    width: ctx.strokeThin * 0.7,
+    opacity,
+    linecap: 'round',
+  });
+}
+
 function hornShape(ctx: DrawCtx, kind: string, k: number, side: number): Local {
   const c = ctx.colors;
   const w = ctx.strokeW * 0.86;
@@ -878,24 +1347,69 @@ function hornShape(ctx: DrawCtx, kind: string, k: number, side: number): Local {
   switch (kind) {
     case 'budHorn': {
       const L = 20 * k;
+      // つぼみづのだけは「アクセント色の角」ではなく、体から生えた
+      // 小さな器官として本体色・模様色を共有する。植物と同時発現した
+      // ときに、頭頂だけ別配色へ飛び出す違和感をなくす。
+      const bodyHorn = organTint(ctx, mix(c.body, c.bodyLight, 0.28));
+      const bodyHornFill = organGrad(ctx, 'budBody', bodyHorn);
       s += organShapeOpen(
         ctx,
         `M${n(-4.6 * k)} ${n(2 + HORN_DIP)}L${n(-4.6 * k)} 2C${n(-4.4 * k)} ${n(-L * 0.6)} ${n(-2.4 * k)} ${n(-L * 0.9)} 0 ${n(-L)}C${n(2.4 * k)} ${n(-L * 0.9)} ${n(4.4 * k)} ${n(-L * 0.6)} ${n(4.6 * k)} 2L${n(4.6 * k)} ${n(2 + HORN_DIP)}`,
-        hornFill,
+        bodyHornFill,
         w,
       );
       // つぼみ
-      const bud = organTint(ctx, c.petal);
+      const bud = organTint(ctx, mix(c.bodyLight, c.pattern, 0.34));
       s += ellipse(0, -L - 4.4 * k, 5.2 * k, 6.2 * k, {
         fill: organGrad(ctx, 'bud', bud),
         stroke: c.inkPaint,
         width: w * 0.85,
       });
+      // 本体の模様色を一本だけ浅く入れ、体と同じ「面の上の模様」として
+      // 読ませる。濃い縞を増やさず、芽の丸さは保つ。
       s += path(
-        `M${n(-3.4 * k)} ${n(-L - 4.4 * k)}q${n(3.4 * k)} ${n(-5 * k)} ${n(6.8 * k)} 0`,
-        { stroke: darken(bud, 0.22), width: ctx.strokeThin * 0.8 },
+        `M${n(-3.1 * k)} ${n(-L - 5.1 * k)}Q0 ${n(-L - 7.2 * k)} ${n(3.1 * k)} ${n(-L - 5.1 * k)}`,
+        { stroke: organTint(ctx, c.pattern), width: Math.max(1.1, w * 0.42), opacity: 0.58, linecap: 'round' },
       );
+      // 先端の丸の中に入っていたアーチは、触角の先端を汚して
+      // 「丸い芽」ではなく小さな目のように見せていたため削除する。
       return { svg: s, box: { x: -8 * k, y: -L - 12 * k, w: 16 * k, h: L + 16 * k } };
+    }
+    case 'nubHorn': {
+      // つのポチ: 参考画像の、低く太い丸三角の角。
+      const L = 11 * k;
+      const band = hornBand(
+        ctx,
+        [{ x: 0, y: 2 + HORN_DIP * k }, { x: -0.25 * k, y: -L * 0.48 }, { x: 0, y: -L }],
+        [6.2 * k, 4.4 * k, 0.8 * k],
+        hornFill,
+        w,
+      );
+      s += band.svg;
+      s += hornBandHighlight(ctx, band, horn, 0.75);
+      s += hornBandRidge(ctx, band, 1, darken(horn, 0.2), 0.52);
+      return { svg: s, box: { x: -10 * k, y: -L - 4 * k, w: 20 * k, h: L + 10 * k } };
+    }
+    case 'coneHorn': {
+      // とげつの: 根元の面がしっかりある、節つきの円錐。
+      const L = 28 * k;
+      const band = hornBand(
+        ctx,
+        [
+          { x: 0, y: 2 + HORN_DIP * k },
+          { x: -0.2 * k, y: -L * 0.28 },
+          { x: 0.15 * k, y: -L * 0.58 },
+          { x: 0, y: -L },
+        ],
+        [7 * k, 6.2 * k, 4.2 * k, 0.8 * k],
+        hornFill,
+        w,
+      );
+      s += band.svg;
+      s += hornBandHighlight(ctx, band, horn, 0.72);
+      s += hornBandRidge(ctx, band, 1, darken(horn, 0.2), 0.68);
+      s += hornBandRidge(ctx, band, 2, darken(horn, 0.2), 0.68);
+      return { svg: s, box: { x: -11 * k, y: -L - 4 * k, w: 22 * k, h: L + 10 * k } };
     }
     case 'twin': {
       const L = 26 * k;
@@ -907,18 +1421,129 @@ function hornShape(ctx: DrawCtx, kind: string, k: number, side: number): Local {
       );
       return { svg: s, box: { x: -9 * k, y: -L - 4 * k, w: 20 * k, h: L + 8 * k } };
     }
+    case 'curlHorn': {
+      // くるん角: 外へ膨らんだ角の面が、先端だけ内側へ戻る。
+      const L = 31 * k;
+      const band = hornBand(
+        ctx,
+        [
+          { x: 0, y: 2 + HORN_DIP * k },
+          { x: side * 3 * k, y: -L * 0.2 },
+          { x: side * 12 * k, y: -L * 0.36 },
+          { x: side * 17 * k, y: -L * 0.63 },
+          { x: side * 14 * k, y: -L * 0.88 },
+          { x: side * 7 * k, y: -L },
+          { x: side * 4 * k, y: -L * 0.78 },
+        ],
+        [6.1 * k, 6.6 * k, 6.1 * k, 5 * k, 3.8 * k, 2.5 * k, 0.8 * k],
+        hornFill,
+        w,
+      );
+      s += band.svg;
+      s += hornBandHighlight(ctx, band, horn, 0.7);
+      s += hornBandRidge(ctx, band, 2, darken(horn, 0.18), 0.62);
+      s += hornBandRidge(ctx, band, 3, darken(horn, 0.18), 0.62);
+      s += hornBandRidge(ctx, band, 4, darken(horn, 0.18), 0.58);
+      return { svg: s, box: { x: -5 * k, y: -L - 5 * k, w: 27 * k, h: L + 11 * k } };
+    }
+    case 'goatHorn': {
+      // ヤギ角: 太い根元から外へ伸び、後ろへ反る節のある角。
+      const L = 36 * k;
+      const band = hornBand(
+        ctx,
+        [
+          { x: 0, y: 2 + HORN_DIP * k },
+          { x: side * 4 * k, y: -L * 0.18 },
+          { x: side * 11 * k, y: -L * 0.36 },
+          { x: side * 17 * k, y: -L * 0.58 },
+          { x: side * 18 * k, y: -L * 0.8 },
+          { x: side * 14 * k, y: -L },
+        ],
+        [6.5 * k, 6.8 * k, 6.4 * k, 5.8 * k, 4.4 * k, 1 * k],
+        hornFill,
+        w,
+      );
+      s += band.svg;
+      s += hornBandHighlight(ctx, band, horn, 0.72);
+      for (const i of [1, 2, 3, 4]) s += hornBandRidge(ctx, band, i, darken(horn, 0.2), 0.64);
+      return { svg: s, box: { x: -5 * k, y: -L - 5 * k, w: 29 * k, h: L + 11 * k } };
+    }
+    case 'ramHorn': {
+      // ラム角: ひと巻き半の厚い螺旋。細い線ではなく、渦の内側にも面を残す。
+      const L = 31 * k;
+      const pts: Vec[] = [];
+      const widths: number[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const t = i / 12;
+        const r = 9.4 * k * (1 - t * 0.76);
+        const a = t * Math.PI * 3.05;
+        pts.push({ x: side * (Math.sin(a) * r + t * 4.5 * k), y: 2 + HORN_DIP * k - t * L });
+        widths.push((6.8 - t * 5.8) * k);
+      }
+      const band = hornBand(ctx, pts, widths, hornFill, w);
+      s += band.svg;
+      s += hornBandHighlight(ctx, band, horn, 0.62);
+      for (const i of [2, 4, 6, 8]) s += hornBandRidge(ctx, band, i, darken(horn, 0.18), 0.52);
+      return { svg: s, box: { x: -15 * k, y: -L - 6 * k, w: 30 * k, h: L + 12 * k } };
+    }
+    case 'coralHorn': {
+      // サンゴ角: 主幹も小枝も「枝の太さ」を持つ、珊瑚のシルエット。
+      const L = 30 * k;
+      const addBranch = (points: Vec[], widths: number[]): HornBand => {
+        const band = hornBand(ctx, points, widths, hornFill, w);
+        s += band.svg;
+        s += hornBandHighlight(ctx, band, horn, 0.72);
+        return band;
+      };
+      const main = addBranch(
+        [
+          { x: 0, y: 2 + HORN_DIP * k },
+          { x: side * 1.2 * k, y: -L * 0.32 },
+          { x: side * 0.6 * k, y: -L * 0.68 },
+          { x: side * 0.2 * k, y: -L },
+        ],
+        [5 * k, 4.5 * k, 3.3 * k, 1 * k],
+      );
+      s += hornBandRidge(ctx, main, 1, darken(horn, 0.16), 0.48);
+      const branches: readonly [Vec[], number[]][] = [
+        [
+          [{ x: side * 1.1 * k, y: -L * 0.31 }, { x: side * 5.7 * k, y: -L * 0.43 }, { x: side * 10 * k, y: -L * 0.58 }],
+          [3.1 * k, 2.2 * k, 0.7 * k],
+        ],
+        [
+          [{ x: side * 0.7 * k, y: -L * 0.59 }, { x: side * 4.4 * k, y: -L * 0.7 }, { x: side * 8.2 * k, y: -L * 0.86 }],
+          [2.7 * k, 1.8 * k, 0.65 * k],
+        ],
+        [
+          [{ x: side * 0.35 * k, y: -L * 0.8 }, { x: side * 3.1 * k, y: -L * 0.92 }, { x: side * 5.7 * k, y: -L * 1.06 }],
+          [2.4 * k, 1.5 * k, 0.6 * k],
+        ],
+      ];
+      for (const [points, widths] of branches) {
+        const branch = addBranch(points, widths);
+        const tip = points[points.length - 1]!;
+        s += ellipse(tip.x, tip.y, 1.35 * k, 1.35 * k, { fill: hornFill, stroke: c.inkPaint, width: w * 0.6 });
+        s += hornBandRidge(ctx, branch, 1, darken(horn, 0.15), 0.42);
+      }
+      return { svg: s, box: { x: -4 * k, y: -L - 9 * k, w: 28 * k, h: L + 15 * k } };
+    }
     case 'spiral': {
+      // 既存のらせんも、芯線だけではなく角の面として統一する。
       const L = 30 * k;
       const pts: Vec[] = [];
+      const widths: number[] = [];
       for (let i = 0; i <= 22; i++) {
         const t = i / 22;
         const r = 6.5 * k * (1 - t * 0.72);
         const a = t * Math.PI * 3.1;
         pts.push({ x: side * (Math.sin(a) * r + t * 7 * k), y: -t * L });
+        widths.push((5.8 - t * 4.9) * k);
       }
-      s += path(polyPath(pts, false), { stroke: c.inkPaint, width: w * 2.4, linecap: 'round' });
-      s += path(polyPath(pts, false), { stroke: horn, width: w * 1.3, linecap: 'round' });
-      return { svg: s, box: { x: -14 * k, y: -L - 5 * k, w: 28 * k, h: L + 8 * k } };
+      const band = hornBand(ctx, pts, widths, hornFill, w);
+      s += band.svg;
+      s += hornBandHighlight(ctx, band, horn, 0.62);
+      for (const i of [4, 8, 12, 16]) s += hornBandRidge(ctx, band, i, darken(horn, 0.18), 0.48);
+      return { svg: s, box: { x: -14 * k, y: -L - 6 * k, w: 28 * k, h: L + 11 * k } };
     }
     case 'crystalHorn': {
       const L = 26 * k;
@@ -961,8 +1586,29 @@ export function buildHorns(ctx: DrawCtx): PartOut[] {
   // 触角は上（頭頂）・中央へ動くので、これで重なりが解消する
   // （`hasBothAntennaeAndHorns` のコメントを参照）。
   const both = hasBothAntennaeAndHorns(ctx);
-  const ay = s.topY + H * (both ? 0.135 : 0.075);
+  // ヤギ角は根元の幅が大きいので、通常の角と同じ位置だと顔の外縁へ
+  // 食い込みやすい。厚みを削らず、付け根だけを少し上・外へ逃がす。
+  // 触角との併発時も、角を下げて顔の横へ押し出すのではなく、頭頂の
+  // 外側に寄せる。これなら花や触角の根元とぶつからず、角の付け根も読める。
+  const hornYFactor =
+    kind === 'goatHorn'
+      ? both
+        ? 0.08
+        : 0.01
+      : kind === 'coralHorn'
+        ? both
+          ? 0.075
+          : 0.015
+        : kind === 'budHorn' || kind === 'twin'
+          ? both
+            ? 0.085
+            : 0.035
+          : both
+            ? 0.105
+            : 0.055;
+  const ay = s.topY + H * hornYFactor;
   const axFactor = both ? 0.72 : 0.52;
+  const hornAxFactor = kind === 'goatHorn' ? (both ? 0.76 : 0.62) : axFactor;
   const rng = ctx.rng('horns');
   const k = clamp(0.85 + ctx.pheno.size * 0.22 + ctx.pheno.decorAmount * 0.12, 0.82, 1.2);
   let svg = '';
@@ -972,7 +1618,7 @@ export function buildHorns(ctx: DrawCtx): PartOut[] {
   // 全個体で同形・同明度になり「ネジ穴」に見えていたので廃止した。
   let shade = '';
   for (const side of [-1, 1]) {
-    const ax = s.cx + side * s.halfAt(ay) * axFactor;
+    const ax = s.cx + side * s.halfAt(ay) * hornAxFactor;
     const loc = hornShape(ctx, kind, k * (1 + ctx.pheno.asymmetry * rng.float(-0.13, 0.13)), side);
     if (!loc.svg) continue;
     // `both` のときだけ追加の外向き回転を足す（`HORN_BOTH_EXTRA_TILT` を参照）。

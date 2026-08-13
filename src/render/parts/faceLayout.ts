@@ -136,7 +136,8 @@ export function isSolidEye(parts: PartExpression): boolean {
  */
 const EYE_SIZE_K: Readonly<Record<string, number>> = {
   round: 1.38,
-  wide: 1.36,
+  // ぱっちりは、目の形を崩さない範囲で「今より大きい」個体も出す。
+  wide: 1.54,
   starry: 1.38,
   oval: 1.18,
   leaf: 1.18,
@@ -151,7 +152,7 @@ export const eyeSizeK = (shapeId: string): number => EYE_SIZE_K[shapeId] ?? 1.2;
  * 白目（sclera）を描かない「縦長のべた目」か。
  *
  * 【製品オーナーの指示「縦長は白目部分いらないんじゃない？」】
- *   縦長の器（たまご: rx 0.6s / ry 1.32s）は、虹彩を縦長にしてもなお
+ *   縦長の器（たまご: rx 0.7s / ry 1.0s）は、虹彩を縦長にしてもなお
  *   上下に白が残りやすい。そこへ目を大きくすると、白の面積だけが増えて
  *   「白目を剥いて見開いた人間の目」に戻る。
  *   縦長は白目をやめ、**目の中を意匠の色で塗った 1 枚の面**にする。
@@ -220,20 +221,22 @@ export function eyeMetrics(shapeId: string, s: number, solid = false): { rx: num
   switch (shapeId) {
     // たまご: 縦長だが、縦長「すぎ」ない程度に。
     //
-    // 【1.32 → 1.15 に詰めた理由 — 3 件の「縦長すぎる」指摘】
+    // 【参考画像に合わせて rx 0.6→0.7、ry 1.0 を採用した理由】
     //   `PZ6U-RWMR`「目が縦長すぎる」／`M2BV-JA8C`「縦長すぎて口と被っている」／
     //   `DJDP-CRND`「この卵型の個体の目が全般的に縦長すぎる」。
     //   たまごは常に `isTallSolidEye` の対象（白目なし・意匠は器いっぱいに
     //   塗る「べた目」）なので、ここで ry を下げれば見た目の縦長さと
     //   べた目の縦横比の両方に同時に効く（2 つは同じ器を共有している）。
     //   1.32 のままだと器の面積が大きく、`M2BV-JA8C` のように口へ食い込む
-    //   個体が出ていた。1.15 まで下げても rx:ry ＝ 1:1.92 でまだ他形（最大でも
-    //   `starry` の 1:1.08）よりはっきり縦長で、「たまご」の識別性は保たれる
+    //   個体が出ていた。rx を 0.7 へ広げた最終比は ry:rx ＝ 1:1.43 で、
+    //   参考画像の丸みを取り込みつつ「たまご」の識別性も保てる
     //   （実際に描いて確認。`isTallSolidEye` のコメントにある「白目を残すと
     //   人間の目に見える」判断はここでは変えていない）。
     case 'oval':
-      rx = 0.6;
-      ry = 1.15;
+      // 卵型の縦幅をさらに少し詰め、口へ食い込む「縦長すぎる目」を避ける。
+      // 横幅を広げて、参考画像の「丸みのある縦長」へ寄せる。
+      rx = 0.7;
+      ry = 1.0;
       break;
     // ぱっちり: いちばん開いた横長。
     //
@@ -416,6 +419,8 @@ const MOUTH_H_RATIO: Readonly<Record<string, number>> = {
   beak: 0.34,
   fang: 0.36,
   peek: 0.66,
+  // おわん口は上下の面を持つが、口としての高さは控えめにする。
+  bowl: 0.64,
 };
 
 /**
@@ -462,6 +467,8 @@ export const MOUTH_UP_RATIO: Readonly<Record<string, number>> = {
   // したみせ: open と同じ式・rh 係数だけ 0.62（open は 0.66）。
   // 極値 0.625×rh_max ＝ 0.625×0.62×1.06w ≈ 0.41w。
   peek: 0.43,
+  // おわん口: 中央の上向きの頂点が上端を作る。
+  bowl: 0.46,
 };
 export const MOUTH_DOWN_RATIO: Readonly<Record<string, number>> = {
   smile: 0.68,
@@ -476,6 +483,8 @@ export const MOUTH_DOWN_RATIO: Readonly<Record<string, number>> = {
   fang: 0.28,
   // したみせ: 極値 0.875×rh_max ≈ 0.58w（内側の塊は 0.47w で内側に収まる）。
   peek: 0.6,
+  // おわん口: 下側の丸い器が口の下端を作る。
+  bowl: 0.56,
 };
 
 /**
@@ -557,7 +566,8 @@ const MOUTH_EYE_GAP = 6.7;
  *   スクリーンショットで確認済み。
  */
 const MOUTH_W_RATIO: Readonly<Record<string, number>> = {
-  smile: 0.56,
+  // 参考画像の短いU字弧に合わせ、現状のにこりを約60%へ。
+  smile: 0.34,
   tiny: 0.42,
   wavy: 0.47,
   open: 0.42,
@@ -572,6 +582,7 @@ const MOUTH_W_RATIO: Readonly<Record<string, number>> = {
   beak: 0.52,
   fang: 0.69,
   peek: 0.42,
+  bowl: 0.5,
 };
 
 /**
@@ -601,6 +612,7 @@ const MOUTH_DRAW_K: Readonly<Record<string, number>> = {
   beak: 0.4,
   fang: 0.62,
   peek: 0.88,
+  bowl: 0.94,
 };
 
 /**
@@ -710,7 +722,8 @@ export function layoutFace(pheno: Phenotype, shape: BodyShape, faceBox: Box): Fa
   const eyes: EyeSlot[] = [];
 
   if (count === 1) {
-    const eyeY = cy - faceBox.h * (0.06 + eyeLift);
+    // 単眼は顔の中央より少し上に置き、口との呼吸を確保する。
+    const eyeY = cy - faceBox.h * (0.14 + eyeLift);
     // 形ごとの倍率。大きくしても下の輪が輪郭・重なりの制約で縮めるので破綻はしない。
     let s = lerp(19, 32, eSize) * sizeK;
     for (let i = 0; i < 24; i++) {
@@ -817,7 +830,11 @@ export function layoutFace(pheno: Phenotype, shape: BodyShape, faceBox: Box): Fa
   //   ry も減るため、目が縦に占める範囲が狭まって余裕自体も増える。
   for (const e of eyes) {
     for (let i = 0; i < 14; i++) {
-      if (boxInsideBody(shape, e.x, e.y, e.rx, e.ry)) break;
+      // 実描画には輪郭線とハイライトの余白があるため、理論上の
+      // rx/ry ぴったりで判定すると、額の小さな3つ目だけが1〜2px
+      // 本体の外へ出ることがある。
+      const fitPad = e.brow ? 2.4 : 1.1;
+      if (boxInsideBody(shape, e.x, e.y, e.rx + fitPad, e.ry + fitPad)) break;
       e.s *= 0.94;
       const m2 = met(e.s);
       e.rx = m2.rx;
@@ -858,6 +875,8 @@ export function layoutFace(pheno: Phenotype, shape: BodyShape, faceBox: Box): Fa
    */
   const mouthLowLimit = Math.max(
     faceBottom - 4,
+    // 口を無理に底へ下げると、横広体の中央の浅い輪郭で口幅が潰れる。
+    // 口の大きさは保ち、目のほうを上へ逃がして距離を作る。
     Math.min(shape.bottomYAt(cx) - 12, faceBox.y + faceBox.h * 1.32),
   );
   // 【最大側だけを抑える 3 段】
@@ -930,6 +949,45 @@ export function layoutFace(pheno: Phenotype, shape: BodyShape, faceBox: Box): Fa
       break;
     }
     mw *= 0.88;
+  }
+
+  // 目が大きい横広体では、下限を体の底へ広げてもなお口の上端が
+  // 目の下へ入り込むことがある。口をさらに縮めるだけでは表情が崩れるので、
+  // まず顔全体を保てる範囲で目を上へ逃がし、必要なら目だけをわずかに縮める。
+  const mouthTop = mouthY - Math.max(5, mw * upK);
+  const eyeTargetBottom = mouthTop - MOUTH_EYE_GAP;
+  const eyeShift = Math.max(0, lowest - eyeTargetBottom);
+  if (eyeShift > 0) {
+    // 3つ目の額の目は、左右の目と同じだけ上へ逃がすと頭頂の輪郭を
+    // 突き抜けることがある。左右の目だけを口から離し、額の目は元の
+    // 額位置に残す。左右の目が上がって額の目に近づく場合は、額の目を
+    // 縮めて視覚的な間隔を保つ（位置をさらに上げて輪郭へ近づけない）。
+    for (const e of eyes) {
+      if (!e.brow) e.y -= eyeShift;
+    }
+    if (eyes.length === 3) {
+      const brow = eyes.find((e) => e.brow);
+      const lowerTop = Math.min(...eyes.filter((e) => !e.brow).map((e) => e.y - e.ry));
+      if (brow && Number.isFinite(lowerTop)) {
+        const maxBrowRy = lowerTop - MOUTH_EYE_GAP - brow.y;
+        if (maxBrowRy > 0 && brow.ry > maxBrowRy) {
+          brow.s *= clamp(maxBrowRy / brow.ry, 0.62, 1);
+          const bm = met(brow.s);
+          brow.rx = bm.rx;
+          brow.ry = bm.ry;
+        }
+      }
+    }
+    for (const e of eyes) {
+      for (let i = 0; i < 12; i++) {
+        const fitPad = e.brow ? 2.4 : 1.1;
+        if (boxInsideBody(shape, e.x, e.y, e.rx + fitPad, e.ry + fitPad)) break;
+        e.s *= 0.95;
+        const m2 = met(e.s);
+        e.rx = m2.rx;
+        e.ry = m2.ry;
+      }
+    }
   }
 
   // 頬。口の少し上、目の外側。

@@ -32,10 +32,13 @@ import { icon, iconOrText } from './icons.ts';
 import { screenTitle } from './screens/title.ts';
 import { screenEggSelect } from './screens/eggSelect.ts';
 import { screenNursery } from './screens/nursery.ts';
+import { screenField } from './screens/field.ts';
+import { screenStaff } from './screens/staff.ts';
 import { screenCollection } from './screens/collection.ts';
 import { screenDetail } from './screens/detail.ts';
 import { screenExhibition } from './screens/exhibition.ts';
 import { screenShop } from './screens/shop.ts';
+import { screenMarket } from './screens/market.ts';
 import { screenBreeding } from './screens/breeding.ts';
 import { screenSettings } from './screens/settings.ts';
 
@@ -71,10 +74,13 @@ interface NavDef {
 
 const NAV: readonly NavDef[] = [
   { id: 'nursery', path: '/nursery', label: '育成室', icon: 'sprout' },
+  { id: 'field', path: '/field', label: '飼育フィールド', icon: 'globe' },
+  { id: 'staff', path: '/staff', label: '飼育員', icon: 'staff', unlock: 'staff' },
   { id: 'collection', path: '/collection', label: '標本帳', icon: 'book', unlock: 'collection' },
   { id: 'exhibition', path: '/exhibition', label: '展示会', icon: 'medal', unlock: 'exhibition' },
   { id: 'shop', path: '/shop', label: 'ショップ', icon: 'pot', unlock: 'shop' },
   { id: 'breeding', path: '/breeding', label: '交配', icon: 'helix', unlock: 'breeding' },
+  { id: 'market', path: '/market', label: '販売所', icon: 'coin', unlock: 'breeder' },
   { id: 'settings', path: '/settings', label: '設定', icon: 'gear' },
 ];
 
@@ -89,11 +95,14 @@ const ROUTES: Readonly<Record<string, { id: ScreenId; make: ScreenFactory; bare?
   title: { id: 'title', make: screenTitle, bare: true },
   eggSelect: { id: 'eggSelect', make: screenEggSelect },
   nursery: { id: 'nursery', make: screenNursery },
+  field: { id: 'field', make: screenField },
+  staff: { id: 'staff', make: screenStaff },
   collection: { id: 'collection', make: screenCollection },
   detail: { id: 'detail', make: screenDetail },
   exhibition: { id: 'exhibition', make: screenExhibition },
   shop: { id: 'shop', make: screenShop },
   breeding: { id: 'breeding', make: screenBreeding },
+  market: { id: 'market', make: screenMarket },
   settings: { id: 'settings', make: screenSettings },
 };
 
@@ -302,7 +311,14 @@ export class App {
   private onTick(): void {
     const report = applyTick(this.state, Date.now());
 
-    if (report.hatched.length || report.grownUp.length || report.unlocked.length || report.offlineMs > 0) {
+    if (
+      report.hatched.length ||
+      report.grownUp.length ||
+      report.unlocked.length ||
+      report.offlineMs > 0 ||
+      report.fieldChanged ||
+      report.staffChanged
+    ) {
       this.markDirty();
     }
 
@@ -317,9 +333,19 @@ export class App {
 
     this.screen?.tick?.(report);
 
-    if (report.hatched.length || report.grownUp.length || report.unlocked.length) {
+    if (report.hatched.length || report.grownUp.length || report.unlocked.length || report.fieldEvent || report.staffEvent) {
       this.renderChrome();
-      this.save(report.hatched.length ? '孵化' : report.grownUp.length ? '成長' : '解放');
+      this.save(
+        report.hatched.length
+          ? '孵化'
+          : report.grownUp.length
+            ? '成長'
+            : report.unlocked.length
+              ? '解放'
+              : report.fieldEvent
+                ? '飼育フィールド'
+                : '飼育員',
+      );
     } else {
       this.renderObjective();
       this.renderCoins();

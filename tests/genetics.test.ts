@@ -299,6 +299,7 @@ describe('9. 支配的な形質がないこと', () => {
     eyeCount: '2',
     antennae: 'none',
     horns: 'none',
+    earTip: 'none',
     wings: 'none',
     crystal: 'none',
     collar: 'none',
@@ -352,7 +353,17 @@ describe('9. 支配的な形質がないこと', () => {
     console.log(`[9] 既定値の重い locus:\n  ${report.join('\n  ')}`);
 
     for (const r of rows) {
-      // 既定値ばかりで多様性が消えていないこと
+      // 「既定値以外の中で偏っていないか」は、カタログにそもそも
+      // 非既定の対立遺伝子が 2 種類以上ある場合だけ意味を持つ。
+      // 不採用形質をカタログから取り除く運用（ocelli/button/mossRing/
+      // shard/cluster/halo）が進むと、非既定が 1 種類だけのロカスが自然に
+      // 生まれる（現在の crystal は結晶を完全撤去して none だけになっている）。
+      // その場合「非既定の中で 1 種類しかない」のは設計どおりであって
+      // 偏りではないので、検査自体を免除する。
+      const catalogOtherCount = (CAT_LOCI.find((l) => l.locus === r.locus)?.alleles.length ?? 0) - 1;
+      if (catalogOtherCount < 2) continue;
+      // 既定値ばかりで多様性が消えていないこと。
+      // 非既定形質がカタログに無いロカス（現在の crystal）は上の分岐で免除する。
       expect(r.defRatio, r.locus).toBeLessThan(0.95);
       // 既定値以外が 2 種類以上出ていること（1 つの珍形質だけが独占していない）
       expect(r.kinds, r.locus).toBeGreaterThanOrEqual(2);

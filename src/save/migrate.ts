@@ -15,6 +15,9 @@
  *   v1: coins が無く money という名前だった / capacity が無く固定だった
  *   v2: unlocks.collection が無かった / future フィールドが無かった
  *   v3: Creature に lastExhibitAt / lastBredAt が無かった
+ *   v4: 公認ブリーダー資格・販売履歴が無かった
+ *   v5: 飼育フィールドの状態が無かった
+ *   v6: 飼育員の募集・雇用状態が無かった
  *
  * 【設計方針】
  *   - 連鎖マイグレーション（v1 → v2 → v3）。飛び越えない。
@@ -120,11 +123,90 @@ function v3_to_v4(s: Loose): Loose {
   return out;
 }
 
+/**
+ * v4 → v5
+ *   - 公認ブリーダーの解放フラグを追加
+ *   - 資格・売却履歴を追加
+ *
+ * 既存セーブに条件を満たす実績があっても、資格の解放判定は起動後の
+ * refreshUnlocks に任せる。ここで過去の実績を推測してフラグを立てると、
+ * 将来条件を変えたときに移行処理だけが古いルールを持つため。
+ */
+function v4_to_v5(s: Loose): Loose {
+  const out: Loose = { ...s };
+  const unlocks = isObj(out['unlocks']) ? { ...out['unlocks'] } : {};
+  if (typeof unlocks['breeder'] !== 'boolean') unlocks['breeder'] = false;
+  out['unlocks'] = unlocks;
+  if (!isObj(out['breeder'])) {
+    out['breeder'] = { licensed: false, sales: 0, earnings: 0, history: [] };
+  }
+  out['version'] = 5;
+  return out;
+}
+
+/**
+ * v5 → v6
+ *   - 飼育フィールドの生活状態を追加する。
+ *
+ * フィールドは新機能なので、旧セーブに過去の排泄物を推測して追加しない。
+ * 初回起動時は清潔な状態から始め、以後の tick が正本になる。
+ */
+function v5_to_v6(s: Loose): Loose {
+  const out: Loose = { ...s };
+  if (!isObj(out['field'])) {
+    out['field'] = {
+      cleanliness: 100,
+      droppings: [],
+      placements: [],
+      lastDroppingAge: {},
+      lastTickAt: 0,
+      lastRobotCleanAt: 0,
+    };
+  }
+  out['version'] = 6;
+  return out;
+}
+
+/**
+ * v6 → v7
+ *   - 飼育員の候補・雇用状態を追加する。
+ *
+ * 候補者は新しい募集を開いた時点で worldSeed から生成するため、旧セーブへ
+ * ダミー候補を混ぜない。staff 画面を開いたときに自然に募集が始まる。
+ */
+function v6_to_v7(s: Loose): Loose {
+  const out: Loose = { ...s };
+  if (!isObj(out['staff'])) {
+    out['staff'] = {
+      candidates: [],
+      hiredId: null,
+      hiredAt: 0,
+      lastServiceAt: 0,
+      lastPaidAt: 0,
+      unpaidSince: 0,
+      candidateCycle: 0,
+    };
+  }
+  const stats = isObj(out['stats']) ? { ...out['stats'] } : {};
+  if (typeof stats['staffCareActions'] !== 'number' || !Number.isFinite(stats['staffCareActions'])) {
+    stats['staffCareActions'] = 0;
+  }
+  out['stats'] = stats;
+  const unlocks = isObj(out['unlocks']) ? { ...out['unlocks'] } : {};
+  if (typeof unlocks['staff'] !== 'boolean') unlocks['staff'] = false;
+  out['unlocks'] = unlocks;
+  out['version'] = 7;
+  return out;
+}
+
 /** バージョン n → n+1 の変換表。ここに追記するだけで拡張できる。 */
-const STEPS: Readonly<Record<number, (s: Loose) => Loose>> = {
+  const STEPS: Readonly<Record<number, (s: Loose) => Loose>> = {
   1: v1_to_v2,
   2: v2_to_v3,
   3: v3_to_v4,
+  4: v4_to_v5,
+  5: v5_to_v6,
+  6: v6_to_v7,
 };
 
 /** 生データからバージョン番号を読み取る。封筒（SaveData）と中身（GameState）の両方を見る。 */

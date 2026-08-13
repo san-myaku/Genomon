@@ -20,9 +20,12 @@
 import type {
   CareAction,
   Capacity,
+  BreederState,
   ExhibitionScore,
+  FieldState,
   GameStats,
   Settings,
+  StaffState,
   ShopItemDef,
   Stage,
   TutorialState,
@@ -615,6 +618,127 @@ export const SHOP_ITEMS: readonly ShopItemDef[] = [
     passive: { hatchRate: 0.5, growthRate: 0.18 },
     requires: { exhibitions: 3 },
   },
+  {
+    id: 'nurseryPermit2',
+    name: '飼育器拡張許可証 I',
+    price: 360,
+    kind: 'equipment',
+    desc: '飼育器を一つ増設するための正式な許可証。卵から成体まで、各段階の枠が一つ増える。',
+    effectText: '卵・幼体・成体の枠 +1',
+    target: 'room',
+    consumable: false,
+    capacityIncrease: { egg: 1, juvenile: 1, adult: 1 },
+    requires: { exhibitions: 2 },
+  },
+  {
+    id: 'nurseryPermit3',
+    name: '飼育器拡張許可証 II',
+    price: 720,
+    kind: 'equipment',
+    desc: '二基目の増設許可証。育てる数を増やしながら、世話の手間も見渡せる範囲に保つ。',
+    effectText: '卵・幼体・成体の枠 +1',
+    target: 'room',
+    consumable: false,
+    capacityIncrease: { egg: 1, juvenile: 1, adult: 1 },
+    requires: { exhibitions: 4 },
+  },
+  {
+    id: 'nurseryPermit4',
+    name: '飼育器拡張許可証 III',
+    price: 1_200,
+    kind: 'equipment',
+    desc: '大規模な飼育を認める最終許可証。交配と販売を本格的に続ける人向け。',
+    effectText: '卵・幼体・成体の枠 +1',
+    target: 'room',
+    consumable: false,
+    capacityIncrease: { egg: 1, juvenile: 1, adult: 1 },
+    requires: { exhibitions: 7 },
+  },
+  {
+    id: 'cleaningRobot',
+    name: 'おそうじロボット',
+    price: 520,
+    kind: 'equipment',
+    desc: '飼育室を巡回して、汚れがたまる前に手入れする小型機。世話の手を完全に置き換えはしない。',
+    effectText: '清潔さの減り -75%',
+    target: 'room',
+    consumable: false,
+    passive: { cleanlinessDecay: -0.75 },
+    requires: { exhibitions: 3 },
+  },
+  // ── 飼育フィールドの遊具・環境物 ──
+  {
+    id: 'fieldLog',
+    name: '苔むした遊び木',
+    price: 120,
+    kind: 'decor',
+    desc: '登ったり、隠れたり。フィールドに小さな冒険の場所をつくる。',
+    effectText: 'フィールドに遊び木を 1 つ配置できる',
+    target: 'field',
+    consumable: false,
+    fieldObject: 'log',
+    requires: { exhibitions: 1 },
+  },
+  {
+    id: 'fieldPond',
+    name: '浅瀬の水場',
+    price: 190,
+    kind: 'decor',
+    desc: '水面をのぞき込める浅い水場。ひと休みする場所にもなる。',
+    effectText: 'フィールドに水場を 1 つ配置できる',
+    target: 'field',
+    consumable: false,
+    fieldObject: 'pond',
+    requires: { exhibitions: 2 },
+  },
+  {
+    id: 'fieldFeeder',
+    name: '木製のごはん箱',
+    price: 160,
+    kind: 'decor',
+    desc: 'いつでも立ち寄れる、浅い木箱のごはん場所。食べる姿を観察できる。',
+    effectText: 'フィールドにごはん箱を 1 つ配置できる',
+    target: 'field',
+    consumable: false,
+    fieldObject: 'food',
+    requires: { exhibitions: 1 },
+  },
+  {
+    id: 'fieldWater',
+    name: '陶器の水飲み場',
+    price: 170,
+    kind: 'decor',
+    desc: '小さな水皿。水面に顔を近づける様子を眺められる。',
+    effectText: 'フィールドに水飲み場を 1 つ配置できる',
+    target: 'field',
+    consumable: false,
+    fieldObject: 'water',
+    requires: { exhibitions: 1 },
+  },
+  {
+    id: 'fieldFlowerbed',
+    name: '野花の花壇',
+    price: 240,
+    kind: 'decor',
+    desc: '季節の野花が咲く小さな花壇。観察する楽しみを増やす。',
+    effectText: 'フィールドに花壇を 1 つ配置できる',
+    target: 'field',
+    consumable: false,
+    fieldObject: 'flowerbed',
+    requires: { exhibitions: 3 },
+  },
+  {
+    id: 'fieldShade',
+    name: '葉陰のひさし',
+    price: 280,
+    kind: 'decor',
+    desc: '木漏れ日の下で眠れるひさし。落ち着いた生活の場所になる。',
+    effectText: 'フィールドにひさしを 1 つ配置できる',
+    target: 'field',
+    consumable: false,
+    fieldObject: 'shade',
+    requires: { exhibitions: 4 },
+  },
 ];
 
 /** id 逆引き。UI とセーブ復元の両方で使う。 */
@@ -749,7 +873,86 @@ export function exhibitionCoins(total: number, rank: Rank, isFirst: boolean): nu
 }
 
 // ─────────────────────────────────────────────────────────
-//  7. 解放条件
+//  7. 公認ブリーダー販売
+// ─────────────────────────────────────────────────────────
+
+/** 売却額の正本。世話・展示・世代を別々の小さな加点にして、価値の理由を説明できるようにする。 */
+export const MARKET = {
+  basePrice: { egg: 160, juvenile: 320, adult: 520 } as const,
+  /** 成体の展示実績は売却額へ反映するが、展示会より主収入にはしない。 */
+  bestScoreRate: 0.55,
+  /** 形質の希少度は成体だけでなく、卵・幼体の将来性にも反映する。 */
+  rarityRate: 1.15,
+  /** 親から続く世代への小さな評価。希少度だけの競争にしないため上限を置く。 */
+  generationBonus: 16,
+  /** 売却履歴は localStorage を太らせないよう直近 50 件だけ残す。 */
+  historyLimit: 50,
+} as const;
+
+// ─────────────────────────────────────────────────────────
+//  8. 飼育フィールド
+// ─────────────────────────────────────────────────────────
+
+/** 排泄・掃除・配置のゲームプレイに使う数値の正本。 */
+export const FIELD = {
+  slotCount: 12,
+  /** 生き物1体につき10〜14分に1個。短時間の観察で床が埋まらない間隔にする。 */
+  droppingIntervalMs: 10 * 60 * 1000,
+  droppingJitterMs: 4 * 60 * 1000,
+  /** 3体でも数個を眺められる上限。古いセーブも tick 時にここへ収める。 */
+  maxDroppings: 6,
+  /** 何も落ちていないときのフィールド清潔度の自然減衰。 */
+  cleanlinessDecayPerSec: 0.012,
+  /** 排泄物 1 個ごとの環境汚染。上限は droppings の数で自然に決まる。 */
+  droppingDirtPerSec: 0.018,
+  /** 汚れたフィールドから個体へ伝わる清潔度低下。 */
+  creatureDirtPerSec: 0.01,
+  /** ロボットは 30 秒ごとに一つずつ、古いものから片付ける。 */
+  robotCleanIntervalMs: 30 * 1000,
+  cleanRecovery: 32,
+} as const;
+
+// ─────────────────────────────────────────────────────────
+//  9. 飼育員
+// ─────────────────────────────────────────────────────────
+
+/**
+ * 飼育員の固定費と自動世話の正本。
+ * 5 分を 1 給料周期にするのは、ゲーム内の短いプレイでも「雇うとお金が減る」
+ * ことを確認でき、月給という世界観を壊さずに試せる折衷値。
+ */
+export const STAFF = {
+  payIntervalMs: 5 * 60 * 1000,
+  partTime: {
+    hiringFee: 110,
+    wage: 34,
+    serviceIntervalMs: 50 * 1000,
+    coverage: 1,
+    hunger: 12,
+    hydration: 14,
+    cleanliness: 10,
+    mood: 5,
+    health: 2,
+  },
+  fullTime: {
+    hiringFee: 260,
+    wage: 86,
+    serviceIntervalMs: 32 * 1000,
+    coverage: 3,
+    hunger: 9,
+    hydration: 11,
+    cleanliness: 8,
+    mood: 4,
+    health: 2,
+  },
+  /** 募集画面で一度に見せる候補数。 */
+  candidateCount: 3,
+  /** 給料不足のまま放置しても、候補者を勝手に解雇しない猶予。 */
+  unpaidGraceMs: 2 * 60 * 1000,
+} as const;
+
+// ─────────────────────────────────────────────────────────
+//  10. 解放条件
 // ─────────────────────────────────────────────────────────
 
 export const UNLOCK_RULES = {
@@ -763,17 +966,31 @@ export const UNLOCK_RULES = {
   shop: { label: 'ショップ', desc: '展示会に 1 回参加すると開きます。', minExhibitions: 1 },
   /** 交配はショップ解放かつ成体 2 体。個体を 2 体育てた実感が前提。 */
   breeding: { label: '交配', desc: 'ショップ解放後、成体が 2 体そろうと開きます。', requiresShop: true, minAdults: 2 },
+  /** 販売は育成・展示・交配を一通り経験してから。資格の条件は隠さず表示する。 */
+  breeder: {
+    label: '公認ブリーダー',
+    desc: '展示会 3 回・交配 1 回・成体 2 体で資格を申請できます。',
+    minExhibitions: 3,
+    minBred: 1,
+    minAdults: 2,
+  },
+  /** フィールドの世話が増えてから雇える。雇用前に固定費の意味が分かる順番にする。 */
+  staff: {
+    label: '飼育員',
+    desc: '展示会に 2 回 参加すると、飼育員を 募集できます。',
+    minExhibitions: 2,
+  },
 } as const;
 
 // ─────────────────────────────────────────────────────────
-//  8. 所持枠
+//  11. 所持枠
 // ─────────────────────────────────────────────────────────
 
 /** 各段階 3 体ずつ。少なすぎず、育成室の一覧が一画面に収まる上限。 */
 export const CAPACITY_DEFAULT: Capacity = { egg: 3, juvenile: 3, adult: 3 };
 
 // ─────────────────────────────────────────────────────────
-//  9. 交配
+//  12. 交配
 // ─────────────────────────────────────────────────────────
 
 export const BREEDING = {
@@ -794,7 +1011,7 @@ export const BREEDING = {
 } as const;
 
 // ─────────────────────────────────────────────────────────
-//  10. 新規ゲームの初期値
+//  13. 新規ゲームの初期値
 // ─────────────────────────────────────────────────────────
 
 /** 卵を孵す前の LifeState 初期値。孵化直後・新規卵の両方で使う。 */
@@ -833,7 +1050,7 @@ export const INITIAL_STATE_PARTS = {
   /** 購入済みの装飾・設備。 */
   owned: [] as string[],
   /** 育成室のみ開いた状態から始める。 */
-  unlocks: { nursery: true, exhibition: false, shop: false, breeding: false, collection: false } as Unlocks,
+  unlocks: { nursery: true, exhibition: false, shop: false, breeding: false, collection: false, breeder: false, staff: false } as Unlocks,
   capacity: CAPACITY_DEFAULT,
   /** 音量は 0.7。初回起動でいきなり大音量にしない。 */
   settings: { volume: 0.7, muted: false, reducedMotion: false, skipCutscenes: false } as Settings,
@@ -846,8 +1063,32 @@ export const INITIAL_STATE_PARTS = {
     exhibitions: 0,
     coinsEarned: 0,
     careActions: 0,
+    staffCareActions: 0,
   } as GameStats,
   activeCreatureId: null as string | null,
+  breeder: {
+    licensed: false,
+    sales: 0,
+    earnings: 0,
+    history: [],
+  } as BreederState,
+  field: {
+    cleanliness: 100,
+    droppings: [],
+    placements: [],
+    lastDroppingAge: {},
+    lastTickAt: 0,
+    lastRobotCleanAt: 0,
+  } as FieldState,
+  staff: {
+    candidates: [],
+    hiredId: null,
+    hiredAt: 0,
+    lastServiceAt: 0,
+    lastPaidAt: 0,
+    unpaidSince: 0,
+    candidateCycle: 0,
+  } as StaffState,
   /** 将来のオンライン機能用の予約領域（指示書 §9）。縦切り版では空のまま保存される。 */
   future: {
     marketListings: [] as unknown[],
@@ -868,6 +1109,29 @@ export function freshInitialParts() {
     tutorial: { done: [] as string[], current: INITIAL_STATE_PARTS.tutorial.current },
     stats: { ...INITIAL_STATE_PARTS.stats },
     activeCreatureId: INITIAL_STATE_PARTS.activeCreatureId,
+    breeder: {
+      licensed: INITIAL_STATE_PARTS.breeder.licensed,
+      sales: INITIAL_STATE_PARTS.breeder.sales,
+      earnings: INITIAL_STATE_PARTS.breeder.earnings,
+      history: [],
+    },
+    field: {
+      cleanliness: INITIAL_STATE_PARTS.field.cleanliness,
+      droppings: [],
+      placements: [],
+      lastDroppingAge: {},
+      lastTickAt: INITIAL_STATE_PARTS.field.lastTickAt,
+      lastRobotCleanAt: INITIAL_STATE_PARTS.field.lastRobotCleanAt,
+    },
+    staff: {
+      candidates: [],
+      hiredId: INITIAL_STATE_PARTS.staff.hiredId,
+      hiredAt: INITIAL_STATE_PARTS.staff.hiredAt,
+      lastServiceAt: INITIAL_STATE_PARTS.staff.lastServiceAt,
+      lastPaidAt: INITIAL_STATE_PARTS.staff.lastPaidAt,
+      unpaidSince: INITIAL_STATE_PARTS.staff.unpaidSince,
+      candidateCycle: INITIAL_STATE_PARTS.staff.candidateCycle,
+    },
     future: { marketListings: [] as unknown[], tradeHistory: [] as unknown[], rankingCache: null as unknown },
   };
 }

@@ -228,7 +228,7 @@ describe('v1 からのマイグレーション', () => {
       expect(c.lastExhibitAt).toBe(0);
       expect(c.lastBredAt).toBe(0);
     }
-    expect(r.state.version).toBe(4);
+    expect(r.state.version).toBe(SAVE_VERSION);
   });
 
   it('money が coins へ引き継がれ、money は残らない', () => {
@@ -320,7 +320,7 @@ describe('v3 からのマイグレーション（クールダウンの保存対�
     expect(r).not.toBeNull();
     expect(r!.from).toBe(3);
     expect(r!.state.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(4);
+    expect(SAVE_VERSION).toBe(7);
 
     const v = validateState(r!.state);
     expect(v.ok, v.ok ? '' : v.errors.join(' / ')).toBe(true);

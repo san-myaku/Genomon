@@ -90,7 +90,7 @@ test.describe('中心のゲームループ', () => {
     await page.waitForSelector('[data-egg]');
 
     // 未解放のナビは存在する（＝隠さない）が、解放前だと分かる印がある
-    for (const path of ['/exhibition', '/shop', '/breeding']) {
+    for (const path of ['/field', '/staff', '/exhibition', '/shop', '/breeding', '/market']) {
       const link = page.locator(`a[href="#${path}"]`).first();
       await expect(link).toHaveCount(1);
     }
