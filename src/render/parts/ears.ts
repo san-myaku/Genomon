@@ -101,46 +101,13 @@ function organTint(ctx: DrawCtx, hex: string): string {
 }
 
 /**
- * 器官（耳・角）の面と輪郭を分けて描く。
- *
- * 【なぜ 1 本の `path` に fill と stroke を同時に指定してはいけないか — 実測】
- *   SVG の stroke は輪郭線の **中心** に置かれるので、線幅 w のとき
- *   図形の内側を w/2 だけ食う。角や耳の先端は幅が 0 に収束するので、
- *   先端から「幅が w になる高さ」までは **塗りが 1px も残らず、
- *   全部インク色の塊になる**。
- *     `twin`（ふたつづの）… 先端 4〜5px が真っ黒
- *     `budHorn`（つぼみづの）… 同上
- *   長さ 20〜26px の角にとって 4〜5px は 2 割で、
- *   「先の尖った角」ではなく「先が焦げた角」に見えていた。
- *
- * 【解き方】
- *   輪郭つきで一度描いたあと、**同じパスを塗りだけでもう一度重ねる**。
- *   線の内側半分が塗りに覆われるので、実効的に「外側だけの輪郭」になり、
- *   塗りは図形の輪郭ちょうどまで残る。先端でも塗りが消えない。
- *   見た目の線の太さを保つため、1 本目の線幅を 1.9 倍にしてある
- *   （外側に出るのは半分なので、結果は元の 0.95 倍）。
- */
-function organShape(ctx: DrawCtx, d: string, fill: string, w: number, fillOpacity?: number): string {
-  return (
-    path(d, {
-      fill,
-      fillOpacity,
-      stroke: ctx.colors.inkPaint,
-      width: w * 1.9,
-      linejoin: 'round',
-    }) + path(d, { fill, fillOpacity })
-  );
-}
-
-/**
  * 付け根の線を引かない版の `organShape`。
  *
  * `dOpen` は「付け根の始点 → 先端 → 付け根の終点」までの **開いた** パス。
  * 線はこの開いたパスにだけ引き、塗りは `Z` で閉じたものを使う。
  * 付け根を横切る辺は塗りの境界としてだけ存在し、インクは乗らない。
  *
- * 重ね順は `organShape` と同じ理由（先端が焦げないよう、線の内側半分を
- * 塗りで覆う）で「太い線 → 塗り」の順。
+ * 先端の塗りを輪郭線に食わせないため、「太い線 → 塗り」の順に重ねる。
  */
 function organShapeOpen(ctx: DrawCtx, dOpen: string, fill: string, w: number, fillOpacity?: number): string {
   return (
@@ -168,6 +135,36 @@ function rootedPath(a: Vec, arc: string, b: Vec, inw: Vec, dip: number): string 
   return `M${n(sa.x)} ${n(sa.y)}L${n(a.x)} ${n(a.y)}${arc}L${n(sb.x)} ${n(sb.y)}`;
 }
 
+/**
+ * 体の手前へ置く立ち耳用。すそは塗りだけで体内へ潜らせ、輪郭は耳の
+ * 外側（a → 先端 → b）だけに引く。すその 2 本へ stroke を引くと、
+ * 耳の根元から顔へ伸びる黒線になってしまう。
+ */
+function rootedOrganShape(
+  ctx: DrawCtx,
+  a: Vec,
+  arc: string,
+  b: Vec,
+  inw: Vec,
+  dip: number,
+  fill: string,
+  w: number,
+  fillOpacity?: number,
+): string {
+  const open = `M${n(a.x)} ${n(a.y)}${arc}`;
+  // 立ち耳は体外周の直後へ置く。面を深く潜らせると耳色の台形が顔まで
+  // 入るので、外周線（約3px）を覆う最小限だけ内側へ延ばす。
+  const fillDip = Math.min(dip, 4);
+  return (
+    path(open, {
+      stroke: ctx.colors.inkPaint,
+      width: w * 1.9,
+      linejoin: 'round',
+      linecap: 'butt',
+    }) + path(`${rootedPath(a, arc, b, inw, fillDip)}Z`, { fill, fillOpacity })
+  );
+}
+
 // ─────────────────────────────────────────────────────────
 //  耳
 // ─────────────────────────────────────────────────────────
@@ -189,18 +186,7 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
     case 'nub': {
       const bw = 11.5 * k;
       const L = 15 * k;
-      s += organShapeOpen(
-        ctx,
-        rootedPath(
-          { x: -bw, y: 3 },
-          `C${n(-bw * 1.05)} ${n(-L * 0.75)} ${n(-bw * 0.5)} ${n(-L)} 0 ${n(-L)}C${n(bw * 0.5)} ${n(-L)} ${n(bw * 1.05)} ${n(-L * 0.75)} ${n(bw)} 3`,
-          { x: bw, y: 3 },
-          inw,
-          dip,
-        ),
-        skin,
-        w,
-      );
+      s += rootedOrganShape(ctx, { x: -bw, y: 3 }, `C${n(-bw * 1.05)} ${n(-L * 0.75)} ${n(-bw * 0.5)} ${n(-L)} 0 ${n(-L)}C${n(bw * 0.5)} ${n(-L)} ${n(bw * 1.05)} ${n(-L * 0.75)} ${n(bw)} 3`, { x: bw, y: 3 }, inw, dip, skin, w);
       s += ellipse(0, -L * 0.34, bw * 0.42, L * 0.3, { fill: inner, opacity: 0.6 });
       return { svg: s, box: { x: -bw - 2, y: -L - 2, w: bw * 2 + 4, h: L + 8 } };
     }
@@ -208,19 +194,7 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
       // ねこ耳: 先端を丸めた三角形と、薄い桃色の内耳。
       const bw = 12.5 * k;
       const L = 34 * k;
-      s += organShapeOpen(
-        ctx,
-        rootedPath(
-          { x: -bw, y: 5 },
-          `C${n(-bw * 0.94)} ${n(-L * 0.28)} ${n(-bw * 0.62)} ${n(-L * 0.72)} 0 ${n(-L)}` +
-            `C${n(bw * 0.62)} ${n(-L * 0.72)} ${n(bw * 0.94)} ${n(-L * 0.28)} ${n(bw)} 5`,
-          { x: bw, y: 5 },
-          inw,
-          dip,
-        ),
-        skin,
-        w,
-      );
+      s += rootedOrganShape(ctx, { x: -bw, y: 5 }, `C${n(-bw * 0.94)} ${n(-L * 0.28)} ${n(-bw * 0.62)} ${n(-L * 0.72)} 0 ${n(-L)}` + `C${n(bw * 0.62)} ${n(-L * 0.72)} ${n(bw * 0.94)} ${n(-L * 0.28)} ${n(bw)} 5`, { x: bw, y: 5 }, inw, dip, skin, w);
       s += path(
         `M${n(-bw * 0.56)} ${n(0.5)}C${n(-bw * 0.5)} ${n(-L * 0.3)} ${n(-bw * 0.25)} ${n(-L * 0.6)} 0 ${n(-L * 0.78)}` +
           `C${n(bw * 0.25)} ${n(-L * 0.6)} ${n(bw * 0.5)} ${n(-L * 0.3)} ${n(bw * 0.56)} 0Z`,
@@ -235,16 +209,15 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
     }
     case 'bearEar': {
       // くま耳: 頭の横にちょこんと付く、低く丸い耳。
+      // 楕円をそのまま stroke すると、下半分の輪郭が「耳の底辺」になって
+      // 体との間に貼り付け線が残る。左右のふくらみから上だけを開いて描き、
+      // 根元は体の内側まで潜らせて body outline に接続を任せる。
       const bw = 11 * k;
       const L = 22 * k;
       const cy = -L * 0.42;
-      s += ellipse(0, cy, bw, L * 0.58, {
-        fill: skin,
-        stroke: c.inkPaint,
-        // くま耳は輪郭が短く丸いので、他の器官と同じ係数では
-        // 線が面積を食いすぎて「黒い耳」に見える。
-        width: w * 1.3,
-      });
+      const ry = L * 0.58;
+      const rootY = cy + ry * 0.48;
+      s += rootedOrganShape(ctx, { x: -bw, y: rootY }, `C${n(-bw * 1.04)} ${n(cy - ry * 0.22)} ${n(-bw * 0.48)} ${n(cy - ry)} 0 ${n(cy - ry)}` + `C${n(bw * 0.48)} ${n(cy - ry)} ${n(bw * 1.04)} ${n(cy - ry * 0.22)} ${n(bw)} ${n(rootY)}`, { x: bw, y: rootY }, inw, dip, skin, w);
       s += ellipse(0, cy + L * 0.03, bw * 0.58, L * 0.34, {
         fill: mix(inner, c.body, 0.35),
         opacity: 0.72,
@@ -285,18 +258,7 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
     case 'round': {
       const bw = 13 * k;
       const L = 27 * k;
-      s += organShapeOpen(
-        ctx,
-        rootedPath(
-          { x: -bw, y: 5 },
-          `C${n(-bw * 1.16)} ${n(-L * 0.5)} ${n(-bw * 0.62)} ${n(-L)} 0 ${n(-L)}C${n(bw * 0.62)} ${n(-L)} ${n(bw * 1.16)} ${n(-L * 0.5)} ${n(bw)} 5`,
-          { x: bw, y: 5 },
-          inw,
-          dip,
-        ),
-        skin,
-        w,
-      );
+      s += rootedOrganShape(ctx, { x: -bw, y: 5 }, `C${n(-bw * 1.16)} ${n(-L * 0.5)} ${n(-bw * 0.62)} ${n(-L)} 0 ${n(-L)}C${n(bw * 0.62)} ${n(-L)} ${n(bw * 1.16)} ${n(-L * 0.5)} ${n(bw)} 5`, { x: bw, y: 5 }, inw, dip, skin, w);
       s += path(
         `M${n(-bw * 0.56)} 2C${n(-bw * 0.7)} ${n(-L * 0.48)} ${n(-bw * 0.34)} ${n(-L * 0.76)} 0 ${n(-L * 0.78)}C${n(bw * 0.34)} ${n(-L * 0.76)} ${n(bw * 0.7)} ${n(-L * 0.48)} ${n(bw * 0.56)} 2Z`,
         { fill: inner, opacity: 0.75 },
@@ -306,18 +268,7 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
     case 'longEar': {
       const bw = 8.5 * k;
       const L = 44 * k;
-      s += organShapeOpen(
-        ctx,
-        rootedPath(
-          { x: -bw, y: 5 },
-          `C${n(-bw * 1.5)} ${n(-L * 0.5)} ${n(-bw * 0.8)} ${n(-L)} 0 ${n(-L)}C${n(bw * 0.8)} ${n(-L)} ${n(bw * 1.5)} ${n(-L * 0.5)} ${n(bw)} 5`,
-          { x: bw, y: 5 },
-          inw,
-          dip,
-        ),
-        skin,
-        w,
-      );
+      s += rootedOrganShape(ctx, { x: -bw, y: 5 }, `C${n(-bw * 1.5)} ${n(-L * 0.5)} ${n(-bw * 0.8)} ${n(-L)} 0 ${n(-L)}C${n(bw * 0.8)} ${n(-L)} ${n(bw * 1.5)} ${n(-L * 0.5)} ${n(bw)} 5`, { x: bw, y: 5 }, inw, dip, skin, w);
       s += path(
         `M${n(-bw * 0.5)} 0C${n(-bw * 0.85)} ${n(-L * 0.5)} ${n(-bw * 0.45)} ${n(-L * 0.8)} 0 ${n(-L * 0.82)}C${n(bw * 0.45)} ${n(-L * 0.8)} ${n(bw * 0.85)} ${n(-L * 0.5)} ${n(bw * 0.5)} 0Z`,
         { fill: inner, opacity: 0.7 },
@@ -382,7 +333,31 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
       const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
       // 起点を下げたぶん葉が細長くなるので、幅も同じ比で足して形を保つ。
       const wid2 = wid * (len / L);
-      s += organShape(ctx, leafPath(ox, oy, len, wid2, ang, 0.34), organGrad(ctx, 'earleaf', lf), w * 0.92);
+      // `leafPath()` は根元を Z で閉じるため、stroke すると葉の下辺にも
+      // 付け根線ができる。根元に小さな幅を持たせた開いた輪郭だけを描く。
+      const a = (ang * Math.PI) / 180;
+      const nx = -Math.sin(a);
+      const ny = Math.cos(a);
+      const rootHalf = wid2 * 0.18;
+      const left = { x: ox + nx * rootHalf, y: oy + ny * rootHalf };
+      const right = { x: ox - nx * rootHalf, y: oy - ny * rootHalf };
+      const ux = Math.cos(a);
+      const uy = Math.sin(a);
+      const tipX = ox + ux * len;
+      const tipY = oy + uy * len;
+      const c1x = ox + ux * len * 0.28 + nx * wid2;
+      const c1y = oy + uy * len * 0.28 + ny * wid2;
+      const c2x = ox + ux * len * 0.74 + nx * wid2 * 0.66;
+      const c2y = oy + uy * len * 0.74 + ny * wid2 * 0.66;
+      const d1x = ox + ux * len * 0.74 - nx * wid2 * 0.48;
+      const d1y = oy + uy * len * 0.74 - ny * wid2 * 0.48;
+      const d2x = ox + ux * len * 0.28 - nx * wid2 * 0.72;
+      const d2y = oy + uy * len * 0.28 - ny * wid2 * 0.72;
+      const openLeaf =
+        `M${n(left.x)} ${n(left.y)}` +
+        `C${n(c1x)} ${n(c1y)} ${n(c2x)} ${n(c2y)} ${n(tipX)} ${n(tipY)}` +
+        `C${n(d1x)} ${n(d1y)} ${n(d2x)} ${n(d2y)} ${n(right.x)} ${n(right.y)}`;
+      s += organShapeOpen(ctx, openLeaf, organGrad(ctx, 'earleaf', lf), w * 0.92);
       s += path(leafVein(ox, oy, len, ang), {
         stroke: darken(lf, 0.34),
         width: ctx.strokeThin * 0.9,
@@ -394,18 +369,7 @@ function earShape(ctx: DrawCtx, kind: string, k: number, inw: Vec): Local {
       // 共優性: まるみみの輪郭に葉の先端と葉脈が混ざる
       const bw = 12.5 * k;
       const L = 32 * k;
-      s += organShapeOpen(
-        ctx,
-        rootedPath(
-          { x: -bw, y: 5 },
-          `C${n(-bw * 1.2)} ${n(-L * 0.46)} ${n(-bw * 0.72)} ${n(-L * 0.8)} 0 ${n(-L)}C${n(bw * 0.72)} ${n(-L * 0.8)} ${n(bw * 1.2)} ${n(-L * 0.46)} ${n(bw)} 5`,
-          { x: bw, y: 5 },
-          inw,
-          dip,
-        ),
-        organGrad(ctx, 'earrl', organTint(ctx, mix(c.body, c.leafLight, 0.45))),
-        w,
-      );
+      s += rootedOrganShape(ctx, { x: -bw, y: 5 }, `C${n(-bw * 1.2)} ${n(-L * 0.46)} ${n(-bw * 0.72)} ${n(-L * 0.8)} 0 ${n(-L)}C${n(bw * 0.72)} ${n(-L * 0.8)} ${n(bw * 1.2)} ${n(-L * 0.46)} ${n(bw)} 5`, { x: bw, y: 5 }, inw, dip, organGrad(ctx, 'earrl', organTint(ctx, mix(c.body, c.leafLight, 0.45))), w);
       s += path(leafVein(0, 2, L, -90), { stroke: c.leafDark, width: ctx.strokeThin, opacity: 0.7 });
       for (let i = 1; i <= 3; i++) {
         const y = -L * (0.2 * i + 0.1);
@@ -479,7 +443,10 @@ function earTipOutline(ctx: DrawCtx, d: string, w: number): string {
   return path(d, {
     fill: 'none',
     stroke: ctx.colors.inkPaint,
-    width: w * 1.9,
+    // 色面は元の耳の輪郭と同じパスまで届いている。ここで太線を重ねると
+    // 外枠だけが二重に太り、耳先色が「ずれた別パーツ」に見える。
+    // 本体と同じ一本の太さで描き直して、切り替わりを一体の耳に保つ。
+    width: w,
     linejoin: 'round',
     linecap: 'butt',
   });
@@ -513,7 +480,7 @@ function ellipseTip(ctx: DrawCtx, cy: number, rx: number, ry: number, w: number,
   return path(d, { fill }) + ellipse(0, cy, rx, ry, {
     fill: 'none',
     stroke: ctx.colors.inkPaint,
-    width: w * 1.3,
+    width: w,
   });
 }
 
@@ -787,6 +754,96 @@ function rootDirLocal(kind: string, side: number, angDeg: number): Vec {
   return { x: (gx * co + gy * si) / m, y: (-gx * si + gy * co) / m };
 }
 
+/**
+ * 体の輪郭上に二つの根元を持つ、前景の一続き耳。
+ *
+ * ここで指定する `upper` / `lower` はいずれも `BodyShape.edgeX()` から
+ * 得た点であり、耳の外周は必ず body outline から始まり body outline へ
+ * 戻る。閉じる辺は塗りだけを body 側へ 0.8px だけ重ねるので、後から
+ * 描いた体外周の黒線を消せる一方、顔へ耳色の面を押し込まない。
+ */
+function integratedEar(
+  ctx: DrawCtx,
+  kind: string,
+  side: number,
+  upper: Vec,
+  lower: Vec,
+  k: number,
+): { svg: string; box: Box } {
+  const c = ctx.colors;
+  const center = { x: (upper.x + lower.x) / 2, y: (upper.y + lower.y) / 2 };
+  const spec: Record<string, { reach: number; lift: number; round: number; fill: string }> = {
+    nub: { reach: 13, lift: 13, round: 0.95, fill: c.body },
+    round: { reach: 17, lift: 26, round: 1.05, fill: c.body },
+    longEar: { reach: 13, lift: 43, round: 0.72, fill: c.body },
+    catEar: { reach: 17, lift: 35, round: 0.34, fill: c.body },
+    bearEar: { reach: 12, lift: 16, round: 0.72, fill: c.body },
+    leafEar: { reach: 15, lift: 33, round: 0.5, fill: organTint(ctx, c.leafLight) },
+    roundLeafEar: { reach: 17, lift: 31, round: 0.82, fill: organTint(ctx, mix(c.body, c.leafLight, 0.45)) },
+    gill: { reach: 13, lift: 23, round: 0.42, fill: organTint(ctx, mix(c.petal, c.accent, 0.3)) },
+  };
+  const q = spec[kind]!;
+  const reach = q.reach * k;
+  const lift = q.lift * k;
+  const apex = { x: center.x + side * reach * (kind === 'catEar' ? 0.42 : 0.62), y: center.y - lift };
+  const open = kind === 'bearEar'
+    ? `M${n(upper.x)} ${n(upper.y)}` +
+      `C${n(upper.x + side * reach * 1.02)} ${n(upper.y - lift * 0.48)}` +
+      ` ${n(center.x + side * reach * 1.26)} ${n(center.y - lift)}` +
+      ` ${n(apex.x + side * reach * 0.08)} ${n(apex.y)}` +
+      `C${n(center.x + side * reach * 1.26)} ${n(center.y - lift)}` +
+      ` ${n(lower.x + side * reach * 1.02)} ${n(lower.y - lift * 0.48)}` +
+      ` ${n(lower.x)} ${n(lower.y)}`
+    : `M${n(upper.x)} ${n(upper.y)}` +
+      `C${n(upper.x + side * reach * 0.94)} ${n(upper.y - lift * 0.26 * q.round)}` +
+      ` ${n(apex.x + side * reach * (q.round - 0.38))} ${n(apex.y + lift * 0.2)}` +
+      ` ${n(apex.x)} ${n(apex.y)}` +
+      `C${n(apex.x + side * reach * (q.round - 0.15))} ${n(apex.y + lift * 0.28)}` +
+      ` ${n(lower.x + side * reach * 1.02)} ${n(lower.y - lift * 0.2 * q.round)}` +
+      ` ${n(lower.x)} ${n(lower.y)}`;
+  const inward = 0.8;
+  const fillPath = `${open}L${n(lower.x - side * inward)} ${n(lower.y)}L${n(upper.x - side * inward)} ${n(upper.y)}Z`;
+  let svg = path(fillPath, { fill: q.fill });
+  if (ctx.parts.earTip === 'tip') {
+    // 耳先色も一続きの耳面として置く。外周線を重ねないので、独立した
+    // 小片や二重線にはならない。
+    const tip = earTipPalette(ctx).fill;
+    const tipW = Math.max(3.8, reach * 0.34);
+    const tipH = Math.max(5, lift * 0.3);
+    svg += path(
+      `M${n(apex.x)} ${n(apex.y)}` +
+      `C${n(apex.x + side * tipW)} ${n(apex.y + tipH * 0.08)}` +
+      ` ${n(apex.x + side * tipW * 1.12)} ${n(apex.y + tipH * 0.66)}` +
+      ` ${n(apex.x + side * tipW * 0.42)} ${n(apex.y + tipH)}` +
+      `C${n(apex.x + side * tipW * 0.1)} ${n(apex.y + tipH * 0.62)}` +
+      ` ${n(apex.x)} ${n(apex.y + tipH * 0.32)}` +
+      ` ${n(apex.x)} ${n(apex.y)}Z`,
+      { fill: tip },
+    );
+  }
+  svg += path(open, { stroke: c.inkPaint, width: ctx.strokeW, linejoin: 'round', linecap: 'round' });
+
+  if (kind === 'bearEar' || kind === 'round' || kind === 'nub') {
+    svg += ellipse(center.x + side * reach * 0.42, center.y - lift * 0.37, reach * 0.29, lift * 0.25, {
+      fill: mix(c.petal, c.body, 0.45), opacity: 0.42,
+    });
+  } else if (kind === 'leafEar' || kind === 'roundLeafEar') {
+    svg += path(`M${n(lower.x)} ${n(lower.y)}Q${n(center.x + side * reach * 0.58)} ${n(center.y - lift * 0.42)} ${n(apex.x)} ${n(apex.y)}`, {
+      stroke: c.leafDark, width: ctx.strokeThin * 0.8, opacity: 0.68, linecap: 'round',
+    });
+  } else if (kind === 'gill') {
+    for (let i = 0; i < 3; i++) {
+      const t = 0.26 + i * 0.22;
+      const x = lower.x + (apex.x - lower.x) * t;
+      const y = lower.y + (apex.y - lower.y) * t;
+      svg += path(`M${n(x)} ${n(y)}q${n(side * reach * 0.52)} ${n(-lift * 0.03)} ${n(side * reach * 0.78)} ${n(lift * 0.14)}`, {
+        stroke: mix(c.petal, c.bodyLight, 0.28), width: ctx.strokeThin * 0.72, linecap: 'round', opacity: 0.9,
+      });
+    }
+  }
+  return { svg, box: { x: Math.min(upper.x, lower.x, apex.x) - reach - 4, y: apex.y - 4, w: reach * 2 + 12, h: lower.y - apex.y + 8 } };
+}
+
 export function buildEars(ctx: DrawCtx): PartOut[] {
   const kind = ctx.parts.ears;
   if (!kind || kind === 'none') return [];
@@ -798,10 +855,38 @@ export function buildEars(ctx: DrawCtx): PartOut[] {
   const asym = ctx.pheno.asymmetry;
   const k = clamp(0.82 + ctx.pheno.size * 0.24 + ctx.pheno.decorAmount * 0.16, 0.8, 1.25);
 
+  const integrated = new Set(['nub', 'round', 'longEar', 'catEar', 'bearEar', 'leafEar', 'roundLeafEar', 'gill']);
+  if (integrated.has(kind)) {
+    let svg = '';
+    let bbox: Box | undefined;
+    const rootSpan = (kind === 'bearEar' ? 9 : kind === 'gill' ? 11 : 15) * k;
+    for (const side of [-1, 1]) {
+      // 根元二点を実際の body outline から取る。位置・半径のマスクではなく、
+      // SVG 外周そのものが body 外周へ連続するための幾何学的な接続である。
+      const upperY = ay - rootSpan * 0.5;
+      const lowerY = ay + rootSpan * 0.5;
+      const upper = { x: s.edgeX(upperY, side), y: upperY };
+      const lower = { x: s.edgeX(lowerY, side), y: lowerY };
+      const ear = integratedEar(ctx, kind, side, upper, lower, k);
+      svg += ear.svg;
+      bbox = boxUnion(bbox, ear.box);
+    }
+    return [{
+      id: 'ears',
+      z: Z.EAR_FRONT,
+      svg,
+      anchor: { id: 'ears', x: s.cx, y: ay, angle: 0, scale: k },
+      bbox,
+    }];
+  }
+
   let svg = '';
   let bbox: Box | undefined;
   for (const side of [-1, 1]) {
-    const ax = s.edgeX(ay, side) - side * 3.5;
+    // 付け根を体の内側へ置くと、体の外周が耳の腹を横切って
+    // 「頭に貼った飾り」のように見える。耳の中心は輪郭の少し外へ出し、
+    // `rootedPath()` のすそだけを内側へ戻して接続する。
+    const ax = s.edgeX(ay, side) + side * 1.5;
     const jitterA = asym * rng.float(-9, 9);
     const jitterK = 1 + asym * rng.float(-0.11, 0.11);
     // すその向きは置いたあとの角度に依存するので、先に角度を決める。
@@ -823,6 +908,7 @@ export function buildEars(ctx: DrawCtx): PartOut[] {
   return [
     {
       id: 'ears',
+      // 耳は体の背面。前面にすると、耳の面が顔まで入り込む。
       z: Z.EAR_BACK,
       svg: fitted.svg,
       anchor: { id: 'ears', x: s.cx, y: ay, angle: 0, scale: k },
