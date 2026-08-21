@@ -32,6 +32,17 @@ import { inspectModel } from '../render/inspect.ts';
 import { makeUid } from '../render/svg.ts';
 import { $, $$, delegate, esc, setHtml } from '../ui/dom.ts';
 import {
+  applyNudges,
+  attachPartDrag,
+  isDraggablePart,
+  isNoop,
+  nudgeBy,
+  nudgeSummary,
+  scaleBy,
+  scaleOf,
+  type Nudges,
+} from './partNudge.ts';
+import {
   drawSpecimen,
   makeSpecimen,
   makeSpecimenNear,
@@ -150,6 +161,19 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
   let gridItems = new Map<string, Specimen>();
   /** 一覧カードから選択中なら、その個体を単体表示の再生成元にする。 */
   let selectedGridItem: Specimen | null = null;
+  /**
+   * パーツのずらし量（seed ごと）。製品オーナーが「こうしてほしい」を
+   * 実際に動かして見せるための調整で、**その個体にだけ** 効く。
+   */
+  const nudgesBySeed = new Map<string, Nudges>();
+  /** いま掴んでいる／選んでいるパーツ ID。 */
+  let pickedPart: string | null = null;
+  /** ドラッグ解除関数（再描画のたびに付け直す）。 */
+  let detachDrag: (() => void) | null = null;
+  /** 左右連動（右まつげを動かしたら左も動く）。 */
+  let mirrorNudge = true;
+
+  const nudgesOf = (seed: string): Nudges => nudgesBySeed.get(seed) ?? {};
 
   const spec = (): GenSpec => ({
     stage: st.stage,
@@ -189,7 +213,9 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
       return;
     }
     currentPx = st.big ? 420 : 190;
-    currentSvg = drawSpecimen(s.model, {
+    // ずらし量を上から掛けてから描く（Genotype は一切変えない）。
+    const shown = applyNudges(s.model, nudgesOf(s.seed));
+    currentSvg = drawSpecimen(shown, {
       background: null,
       debug: st.debug,
       partLimit,
@@ -246,6 +272,7 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
         `>` +
         `<button data-act="save-seed">💬 コメントを付けて保存</button>` +
         `</div>` +
+        nudgeUi(s.seed) +
         `<div class="row lab-action-row">` +
         `<button data-act="copy-seed">seed をコピー</button>` +
         `<button data-act="png">PNG 出力</button>` +
@@ -255,6 +282,73 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
         `</div>` +
         `</div>`,
     );
+    bindPartDrag();
+  }
+
+  /**
+   * パーツをドラッグして動かす UI。
+   *
+   * 絵の上でパーツを掴んで動かすと、その個体だけ位置がずれる。
+   * ずらし量は数値で表示され、コメント保存でエージェントへ渡る。
+   */
+  function nudgeUi(seed: string): string {
+    const nud = nudgesOf(seed);
+    const rows = Object.entries(nud)
+      .filter(([, o]) => !isNoop(o))
+      .map(([id, o]) => {
+        const k = scaleOf(o);
+        const kt = Math.abs(k - 1) < 0.005 ? '' : ` <b>×${k.toFixed(2)}</b>`;
+        return (
+          `<li><code>${esc(id)}</code> <b>${o.dx.toFixed(1)}, ${o.dy.toFixed(1)}</b>${kt}` +
+          `<button data-act="nudge-reset-one" data-part="${esc(id)}" class="mini">戻す</button></li>`
+        );
+      })
+      .join('');
+    // 細いパーツ（まつげなど）は直接つかみにくいので、名前で選んで
+    // 矢印ボタンで動かす道も用意する。
+    const opts = (current?.model.parts ?? [])
+      .filter((p) => isDraggablePart(p.id))
+      .map((p) => `<option value="${esc(p.id)}"${p.id === pickedPart ? ' selected' : ''}>${esc(p.id)}</option>`)
+      .join('');
+    return (
+      `<div class="lab-nudge">` +
+      `<div class="row">` +
+      `<label><input type="checkbox" id="lab-nudge-mirror"${mirrorNudge ? ' checked' : ''}> 左右連動</label>` +
+      `<select id="lab-nudge-part"><option value="">パーツを選ぶ…</option>${opts}</select>` +
+      `<button data-act="nudge-move" data-d="-1,0" title="左へ">←</button>` +
+      `<button data-act="nudge-move" data-d="0,-1" title="上へ">↑</button>` +
+      `<button data-act="nudge-move" data-d="0,1" title="下へ">↓</button>` +
+      `<button data-act="nudge-move" data-d="1,0" title="右へ">→</button>` +
+      `<button data-act="nudge-scale" data-f="1.08" title="大きく">＋</button>` +
+      `<button data-act="nudge-scale" data-f="0.926" title="小さく">－</button>` +
+      `<button data-act="nudge-reset">すべて戻す</button>` +
+      `</div>` +
+      `<div class="lab-nudge__pick">${pickedPart ? `選択中: <code>${esc(pickedPart)}</code>（絵の上でドラッグ／矢印で 1 ずつ／＋－で拡大縮小）` : '絵の上でパーツをドラッグ。細いパーツは一覧で選んで矢印・＋－。'}</div>` +
+      (rows ? `<ul class="lab-nudge__list">${rows}</ul>` : '') +
+      `</div>`
+    );
+  }
+
+  /** 単体表示の SVG にドラッグを取り付け直す。 */
+  function bindPartDrag(): void {
+    detachDrag?.();
+    detachDrag = null;
+    const fig = $('#lab-fig', host);
+    if (!fig || !current) return;
+    const seed = current.seed;
+    detachDrag = attachPartDrag(fig as HTMLElement, {
+      get: () => nudgesOf(seed),
+      commit: (next) => {
+        nudgesBySeed.set(seed, next);
+        renderSingle();
+      },
+      onPick: (id) => {
+        pickedPart = id;
+        const el = $('.lab-nudge__pick', host);
+        if (el) setHtml(el, id ? `選択中: <code>${esc(id)}</code>` : '絵の上でパーツをドラッグ');
+      },
+      mirror: () => mirrorNudge,
+    });
   }
 
   /** 描画順（z 昇順）を 1 枚ずつ重ねて確認する UI。 */
@@ -787,6 +881,15 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
     renderSingle();
   });
 
+  /** 左右連動のチェックボックス（単体表示のたびに作り直されるので委譲で拾う）。 */
+  const offNudgeMirror = delegate(host, 'change', '#lab-nudge-mirror', (t2) => {
+    mirrorNudge = (t2 as HTMLInputElement).checked;
+  });
+  const offNudgePart = delegate(host, 'change', '#lab-nudge-part', (t2) => {
+    pickedPart = (t2 as HTMLSelectElement).value || null;
+    renderSingle();
+  });
+
   function syncMutLabel(): void {
     const o = $('#f-mut-out', host);
     if (o) o.textContent = `${st.mutationScale}×`;
@@ -839,14 +942,74 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
         partLimit = null;
         renderSingle();
         break;
+      case 'nudge-move':
+        if (current && pickedPart) {
+          const [mx, my] = (t.dataset.d ?? '0,0').split(',').map(Number);
+          nudgesBySeed.set(
+            current.seed,
+            nudgeBy(nudgesOf(current.seed), pickedPart, mx ?? 0, my ?? 0, mirrorNudge),
+          );
+          renderSingle();
+        } else {
+          deps.toast('先にパーツを選んでください（絵をクリックするか一覧から）。', 'bad');
+        }
+        break;
+      case 'nudge-scale':
+        if (current && pickedPart) {
+          const f = Number(t.dataset.f ?? '1');
+          // 拡大の中心は「調整前」のパーツの中心。ずらした後でも基準が動かない。
+          const centerOf = (id: string) => {
+            const bb = current?.model.parts.find((q) => q.id === id)?.bbox;
+            return bb ? { x: bb.x + bb.w / 2, y: bb.y + bb.h / 2 } : null;
+          };
+          nudgesBySeed.set(
+            current.seed,
+            scaleBy(nudgesOf(current.seed), pickedPart, f, mirrorNudge, centerOf),
+          );
+          renderSingle();
+        } else {
+          deps.toast('先にパーツを選んでください（絵をクリックするか一覧から）。', 'bad');
+        }
+        break;
+      case 'nudge-reset':
+        if (current) {
+          nudgesBySeed.delete(current.seed);
+          pickedPart = null;
+          renderSingle();
+        }
+        break;
+      case 'nudge-reset-one':
+        if (current) {
+          const id = t.dataset.part ?? '';
+          const cur = { ...nudgesOf(current.seed) };
+          delete cur[id];
+          nudgesBySeed.set(current.seed, cur);
+          renderSingle();
+        }
+        break;
       case 'copy-seed':
         if (current) void copyText(current.seed).then((ok) => deps.toast(ok ? `コピーしました: ${current?.seed}` : 'コピーできませんでした', ok ? 'ok' : 'bad'));
         break;
       case 'save-seed':
         if (current) {
           const input = $('#lab-comment-input', host) as HTMLInputElement | null;
-          const note = input?.value.trim() ?? '';
-          addSeed({ seed: current.seed, stage: st.stage, issues: current.issues, note, savedAt: Date.now() });
+          const typed = input?.value.trim() ?? '';
+          // ドラッグで動かした量も一緒に残す。エージェントはこの数値を見て
+          // 「どの部位をどちらへどれだけ」を正確に受け取れる。
+          const offsets = nudgesOf(current.seed);
+          const moved = nudgeSummary(offsets);
+          const note = moved ? `${typed ? `${typed} ` : ''}[ずらし ${moved}]` : typed;
+          addSeed({
+            seed: current.seed,
+            stage: st.stage,
+            issues: current.issues,
+            note,
+            savedAt: Date.now(),
+            ...(moved ? { offsets } : {}),
+            // 絞り込み（対立遺伝子の強制）を掛けた状態で保存されると、
+            // seed だけでは同じ個体を組み直せない。`cat` を必ず添える。
+            cat: current.genotype.cat as unknown as Record<string, [string, string]>,
+          });
           if (input) input.value = '';
           renderSaved();
           deps.toast(note ? `コメント付きで保存しました: 「${note}」` : '保存しました（コメントなし）。', 'ok');
@@ -977,6 +1140,9 @@ export function mountVisualLab(host: HTMLElement, deps: LabDeps): Mounted {
       offNote();
       offGridLocus();
       offGridAllele();
+      offNudgeMirror();
+      offNudgePart();
+      detachDrag?.();
     },
   };
 }

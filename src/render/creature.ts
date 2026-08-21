@@ -57,7 +57,9 @@ export function renderCreatureSvg(model: RenderModel, opts: RenderSvgOpts = {}):
     .join(' ');
 
   const body = model.parts
-    .map((p) => `<g class="gm-part gm-${p.id}">${p.svg}</g>`)
+    // `data-part` は Visual Lab の「パーツをドラッグして動かす」機能が
+    // クリック位置からパーツを特定するために使う（本番でも無害な属性）。
+    .map((p) => `<g class="gm-part gm-${p.id}" data-part="${p.id}">${p.svg}</g>`)
     .join('');
 
   const inner = opts.animatable === false

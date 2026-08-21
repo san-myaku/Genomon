@@ -82,6 +82,27 @@ export interface SavedSeed {
   resolvedAt?: number | null;
   /** 誰が対応済みにしたか（表示用）。 */
   resolvedBy?: 'user' | 'claude' | null;
+  /**
+   * Visual Lab でパーツをドラッグして動かした量（パーツ ID → dx, dy）。
+   *
+   * 「まつげをもう少し下へ」を言葉で伝える代わりに、製品オーナーが実際に
+   * 動かして見せた結果。**その個体にだけ効く調整** であって、置きかたの
+   * ルールそのものではない。エージェントはこの数値を手がかりに、
+   * どの個体でも成立する直しかたを考える。
+   */
+  offsets?: Record<string, { dx: number; dy: number }>;
+  /**
+   * 保存した時点の **対立遺伝子ペア**（`Genotype.cat`）。
+   *
+   * 【なぜ seed だけでは足りないか — 実際に困った】
+   *   一覧の「絞り込み」は `withForcedCat` で対立遺伝子を強制する。その状態で
+   *   保存すると、あとから `randomGenotype(seed)` で組み直しても **別の個体に
+   *   なる**（2026-08-16、13 件のコメントのうち 6 件が「まつげ=none」で
+   *   再現できず、指摘された絵を確認できなかった）。
+   *   強制は `cat` しか触らないので、これを残せば
+   *   `{ ...randomGenotype(seed), cat }` で完全に復元できる。
+   */
+  cat?: Record<string, [string, string]>;
 }
 
 /** 旧データ（新フィールドが無い）を補って形を揃える。 */

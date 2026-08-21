@@ -229,6 +229,19 @@ input[type=text],input[type=number],select{min-height:36px}
 .note-input{min-height:36px;padding:6px 8px;border-radius:8px}
 .saved-row--resolved{opacity:.64}
 
+/* パーツのドラッグ（Visual Lab の「動かして意図を伝える」機能） */
+#lab-fig svg{touch-action:none}
+#lab-fig .gm-part{cursor:grab}
+#lab-fig .gm-part:hover{outline:none;filter:drop-shadow(0 0 2px rgba(255,120,0,.95))}
+#lab-fig .gm-shadow,#lab-fig .gm-glow,#lab-fig .gm-body,#lab-fig .gm-outline{cursor:default}
+#lab-fig .gm-shadow:hover,#lab-fig .gm-glow:hover,
+#lab-fig .gm-body:hover,#lab-fig .gm-outline:hover{filter:none}
+.lab-nudge{margin:6px 0;padding:6px 8px;border:1px dashed var(--line,#bbb);border-radius:6px}
+.lab-nudge__pick{font-size:11px;opacity:.8}
+.lab-nudge__list{margin:4px 0 0;padding-left:16px;font-size:11px;line-height:1.7}
+.lab-nudge__list code{font-size:11px}
+.lab-nudge__list button.mini{margin-left:6px;padding:0 6px;font-size:10px}
+
 @media (max-width:900px){
   .lab-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .lab-field--seed{grid-column:span 2}
