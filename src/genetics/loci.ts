@@ -225,6 +225,9 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'tuft',    label: 'ふさみみ', dominance: 1, weight: 4, notable: true },
       { id: 'catEar',  label: 'ねこ耳',   dominance: 2, weight: 7 },
       { id: 'bearEar', label: 'くま耳',   dominance: 2, weight: 6 },
+      // 体の外周からそのまま続く、今回追加した独立形質。既存の耳IDは
+      // 見た目とセーブ互換性を保つため、ここへ置き換えない。
+      { id: 'bodyEar', label: '一体耳',   dominance: 1, weight: 4, notable: true },
       // 【アホロートルひれを新規抽選から撤去】
       //   製品オーナーの判断で不採用。既存セーブに残る `gill` は、
       //   `render/parts/ears.ts` の描画を消さずに互換表示する。

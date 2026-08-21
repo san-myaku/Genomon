@@ -772,76 +772,155 @@ function integratedEar(
 ): { svg: string; box: Box } {
   const c = ctx.colors;
   const center = { x: (upper.x + lower.x) / 2, y: (upper.y + lower.y) / 2 };
-  const spec: Record<string, { reach: number; lift: number; round: number; fill: string }> = {
-    nub: { reach: 13, lift: 13, round: 0.95, fill: c.body },
-    round: { reach: 17, lift: 26, round: 1.05, fill: c.body },
-    longEar: { reach: 13, lift: 43, round: 0.72, fill: c.body },
-    catEar: { reach: 17, lift: 35, round: 0.34, fill: c.body },
-    bearEar: { reach: 12, lift: 16, round: 0.72, fill: c.body },
-    leafEar: { reach: 15, lift: 33, round: 0.5, fill: organTint(ctx, c.leafLight) },
-    roundLeafEar: { reach: 17, lift: 31, round: 0.82, fill: organTint(ctx, mix(c.body, c.leafLight, 0.45)) },
-    gill: { reach: 13, lift: 23, round: 0.42, fill: organTint(ctx, mix(c.petal, c.accent, 0.3)) },
+  const spec: Record<string, { reach: number; lift: number; fill: string; silhouette: 'round' | 'point' | 'bear' | 'flop' }> = {
+    nub: { reach: 13, lift: 15, fill: organGrad(ctx, 'ear-nub', c.body), silhouette: 'round' },
+    round: { reach: 17, lift: 27, fill: organGrad(ctx, 'ear-round', c.body), silhouette: 'round' },
+    longEar: { reach: 13, lift: 44, fill: organGrad(ctx, 'ear-long', c.body), silhouette: 'point' },
+    catEar: { reach: 17, lift: 35, fill: organGrad(ctx, 'ear-cat', c.body), silhouette: 'point' },
+    bearEar: { reach: 11, lift: 15, fill: organGrad(ctx, 'ear-bear', c.body), silhouette: 'bear' },
+    leafEar: { reach: 15, lift: 33, fill: organGrad(ctx, 'ear-leaf', organTint(ctx, c.leafLight)), silhouette: 'point' },
+    roundLeafEar: { reach: 17, lift: 32, fill: organGrad(ctx, 'ear-round-leaf', organTint(ctx, mix(c.body, c.leafLight, 0.45))), silhouette: 'point' },
+    bodyEar: { reach: 17, lift: 27, fill: organGrad(ctx, 'ear-body', c.body), silhouette: 'point' },
+    flopEar: { reach: 21.5, lift: 38, fill: organGrad(ctx, 'ear-flop', c.body), silhouette: 'flop' },
   };
   const q = spec[kind]!;
   const reach = q.reach * k;
   const lift = q.lift * k;
-  const apex = { x: center.x + side * reach * (kind === 'catEar' ? 0.42 : 0.62), y: center.y - lift };
-  const open = kind === 'bearEar'
+  const flopOuter = { x: center.x + side * reach, y: center.y + lift * 0.3 };
+  const apex = {
+    x: center.x + side * reach * (kind === 'flopEar' ? 0.72 : kind === 'catEar' ? 0.76 : kind === 'bodyEar' ? 0.9 : 0.72),
+    y: center.y + (kind === 'flopEar' ? lift * 0.88 : -lift),
+  };
+  // 体の上側の根元から外へ出て、下側の根元へ戻る。制御点を根元より
+  // 体側へ戻さないことで、先端のフックや体内へ伸びる短い線を作らない。
+  const open = q.silhouette === 'flop'
     ? `M${n(upper.x)} ${n(upper.y)}` +
-      `C${n(upper.x + side * reach * 1.02)} ${n(upper.y - lift * 0.48)}` +
-      ` ${n(center.x + side * reach * 1.26)} ${n(center.y - lift)}` +
-      ` ${n(apex.x + side * reach * 0.08)} ${n(apex.y)}` +
-      `C${n(center.x + side * reach * 1.26)} ${n(center.y - lift)}` +
-      ` ${n(lower.x + side * reach * 1.02)} ${n(lower.y - lift * 0.48)}` +
-      ` ${n(lower.x)} ${n(lower.y)}`
-    : `M${n(upper.x)} ${n(upper.y)}` +
-      `C${n(upper.x + side * reach * 0.94)} ${n(upper.y - lift * 0.26 * q.round)}` +
-      ` ${n(apex.x + side * reach * (q.round - 0.38))} ${n(apex.y + lift * 0.2)}` +
+      `C${n(upper.x + side * reach * 0.42)} ${n(upper.y - lift * 0.04)}` +
+      ` ${n(flopOuter.x - side * reach * 0.14)} ${n(flopOuter.y - lift * 0.2)}` +
+      ` ${n(flopOuter.x)} ${n(flopOuter.y)}` +
+      `C${n(flopOuter.x + side * reach * 0.12)} ${n(flopOuter.y + lift * 0.2)}` +
+      ` ${n(apex.x + side * reach * 0.18)} ${n(apex.y - lift * 0.04)}` +
       ` ${n(apex.x)} ${n(apex.y)}` +
-      `C${n(apex.x + side * reach * (q.round - 0.15))} ${n(apex.y + lift * 0.28)}` +
-      ` ${n(lower.x + side * reach * 1.02)} ${n(lower.y - lift * 0.2 * q.round)}` +
-      ` ${n(lower.x)} ${n(lower.y)}`;
-  const inward = 0.8;
+      `C${n(apex.x - side * reach * 0.18)} ${n(apex.y + lift * 0.02)}` +
+      ` ${n(lower.x + side * reach * 0.5)} ${n(lower.y + lift * 0.34)}` +
+      ` ${n(lower.x)} ${n(lower.y)}`
+    : kind === 'round'
+    ? `M${n(upper.x)} ${n(upper.y)}` +
+      `C${n(upper.x + side * reach * 1.08)} ${n(upper.y - lift * 0.46)}` +
+      ` ${n(lower.x + side * reach * 1.16)} ${n(lower.y - lift * 0.92)}` +
+      ` ${n(lower.x)} ${n(lower.y)}`
+    : q.silhouette === 'round'
+      ? `M${n(upper.x)} ${n(upper.y)}` +
+      `C${n(upper.x + side * reach * 0.66)} ${n(upper.y - lift * 0.48)}` +
+      ` ${n(apex.x - side * reach * 0.2)} ${n(apex.y)}` +
+      ` ${n(apex.x)} ${n(apex.y)}` +
+      `C${n(apex.x + side * reach * 0.34)} ${n(apex.y + lift * 0.12)}` +
+      ` ${n(lower.x + side * reach * 0.86)} ${n(lower.y - lift * 0.35)}` +
+      ` ${n(lower.x)} ${n(lower.y)}`
+    : q.silhouette === 'bear'
+      ? `M${n(upper.x)} ${n(upper.y)}` +
+        `C${n(upper.x + side * reach * 0.82)} ${n(upper.y - lift * 0.72)}` +
+        ` ${n(apex.x - side * reach * 0.22)} ${n(apex.y)}` +
+        ` ${n(apex.x)} ${n(apex.y)}` +
+        `C${n(apex.x + side * reach * 0.28)} ${n(apex.y + lift * 0.08)}` +
+        ` ${n(lower.x + side * reach * 0.9)} ${n(lower.y - lift * 0.48)}` +
+        ` ${n(lower.x)} ${n(lower.y)}`
+      : `M${n(upper.x)} ${n(upper.y)}` +
+        `C${n(upper.x + side * reach * 0.52)} ${n(upper.y - lift * 0.22)}` +
+        ` ${n(apex.x - side * reach * 0.16)} ${n(apex.y + lift * 0.08)}` +
+        ` ${n(apex.x)} ${n(apex.y)}` +
+        `C${n(apex.x + side * reach * 0.16)} ${n(apex.y + lift * 0.1)}` +
+        ` ${n(lower.x + side * reach * 0.7)} ${n(lower.y - lift * 0.24)}` +
+        ` ${n(lower.x)} ${n(lower.y)}`;
+  // 本体の輪郭線を完全に覆うだけ内側へ潜らせる。外周は open の一本だけ。
+  const inward = ctx.strokeW * 0.9;
   const fillPath = `${open}L${n(lower.x - side * inward)} ${n(lower.y)}L${n(upper.x - side * inward)} ${n(upper.y)}Z`;
   let svg = path(fillPath, { fill: q.fill });
   if (ctx.parts.earTip === 'tip') {
-    // 耳先色も一続きの耳面として置く。外周線を重ねないので、独立した
-    // 小片や二重線にはならない。
     const tip = earTipPalette(ctx).fill;
-    const tipW = Math.max(3.8, reach * 0.34);
-    const tipH = Math.max(5, lift * 0.3);
-    svg += path(
-      `M${n(apex.x)} ${n(apex.y)}` +
-      `C${n(apex.x + side * tipW)} ${n(apex.y + tipH * 0.08)}` +
-      ` ${n(apex.x + side * tipW * 1.12)} ${n(apex.y + tipH * 0.66)}` +
-      ` ${n(apex.x + side * tipW * 0.42)} ${n(apex.y + tipH)}` +
-      `C${n(apex.x + side * tipW * 0.1)} ${n(apex.y + tipH * 0.62)}` +
-      ` ${n(apex.x)} ${n(apex.y + tipH * 0.32)}` +
-      ` ${n(apex.x)} ${n(apex.y)}Z`,
-      { fill: tip },
-    );
+    if (q.silhouette === 'flop') {
+      svg += ellipse(center.x + side * reach * 0.74, center.y + lift * 0.6, reach * 0.19, lift * 0.14, {
+        fill: tip, opacity: 0.92,
+      });
+    } else if (q.silhouette === 'round' || q.silhouette === 'bear') {
+      // 丸い外周からはみ出さない、小さな面として内側へ置く。
+      svg += ellipse(center.x + side * reach * 0.45, center.y - lift * 0.24, reach * 0.16, lift * 0.12, {
+        fill: tip, opacity: 0.92,
+      });
+    } else {
+      // 先端と両側の外周を結ぶ面。左右どちらでも耳の中央に収まり、
+      // 細い線や外周からはみ出す別パーツにならない。
+      const tipUpper = mixVec(apex, upper, 0.34);
+      const tipLower = mixVec(apex, lower, 0.38);
+      svg += path(
+        `M${n(apex.x)} ${n(apex.y)}` +
+        `L${n(tipUpper.x)} ${n(tipUpper.y)}` +
+        `Q${n(center.x + side * reach * 0.78)} ${n(apex.y + lift * 0.48)}` +
+        ` ${n(tipLower.x)} ${n(tipLower.y)}Z`,
+        { fill: tip },
+      );
+    }
   }
   svg += path(open, { stroke: c.inkPaint, width: ctx.strokeW, linejoin: 'round', linecap: 'round' });
 
   if (kind === 'bearEar' || kind === 'round' || kind === 'nub') {
-    svg += ellipse(center.x + side * reach * 0.42, center.y - lift * 0.37, reach * 0.29, lift * 0.25, {
+    svg += ellipse(center.x + side * reach * 0.55, center.y - lift * 0.42, reach * 0.3, lift * 0.25, {
       fill: mix(c.petal, c.body, 0.45), opacity: 0.42,
     });
   } else if (kind === 'leafEar' || kind === 'roundLeafEar') {
     svg += path(`M${n(lower.x)} ${n(lower.y)}Q${n(center.x + side * reach * 0.58)} ${n(center.y - lift * 0.42)} ${n(apex.x)} ${n(apex.y)}`, {
       stroke: c.leafDark, width: ctx.strokeThin * 0.8, opacity: 0.68, linecap: 'round',
     });
-  } else if (kind === 'gill') {
-    for (let i = 0; i < 3; i++) {
-      const t = 0.26 + i * 0.22;
-      const x = lower.x + (apex.x - lower.x) * t;
-      const y = lower.y + (apex.y - lower.y) * t;
-      svg += path(`M${n(x)} ${n(y)}q${n(side * reach * 0.52)} ${n(-lift * 0.03)} ${n(side * reach * 0.78)} ${n(lift * 0.14)}`, {
-        stroke: mix(c.petal, c.bodyLight, 0.28), width: ctx.strokeThin * 0.72, linecap: 'round', opacity: 0.9,
-      });
-    }
+  } else if (kind === 'catEar') {
+    const innerUpper = mixVec(upper, apex, 0.3);
+    const innerLower = mixVec(lower, apex, 0.28);
+    svg += path(
+      `M${n(innerUpper.x)} ${n(innerUpper.y)}` +
+      `L${n(apex.x)} ${n(apex.y + lift * 0.18)}` +
+      `L${n(innerLower.x)} ${n(innerLower.y)}Z`,
+      { fill: mix(c.petal, c.body, 0.34), opacity: 0.66 },
+    );
+  } else if (kind === 'longEar') {
+    svg += path(
+      `M${n(upper.x + side * reach * 0.16)} ${n(upper.y - lift * 0.06)}` +
+      `Q${n(apex.x + side * reach * 0.04)} ${n(apex.y + lift * 0.32)}` +
+      ` ${n(lower.x + side * reach * 0.25)} ${n(lower.y - lift * 0.1)}` +
+      `Q${n(center.x + side * reach * 0.58)} ${n(center.y - lift * 0.42)}` +
+      ` ${n(upper.x + side * reach * 0.16)} ${n(upper.y - lift * 0.06)}Z`,
+      { fill: mix(c.petal, c.body, 0.4), opacity: 0.58 },
+    );
+  } else if (kind === 'flopEar') {
+    svg += ellipse(center.x + side * reach * 0.64, center.y + lift * 0.46, reach * 0.26, lift * 0.24, {
+      fill: mix(c.petal, c.body, 0.38), opacity: 0.56,
+    });
   }
-  return { svg, box: { x: Math.min(upper.x, lower.x, apex.x) - reach - 4, y: apex.y - 4, w: reach * 2 + 12, h: lower.y - apex.y + 8 } };
+  const xPad = kind === 'flopEar' ? reach * 0.12 + 2 : reach * 0.45 + 4;
+  const x0 = Math.min(upper.x, lower.x, apex.x, ...(kind === 'flopEar' ? [flopOuter.x] : [])) - xPad;
+  const x1 = Math.max(upper.x, lower.x, apex.x, ...(kind === 'flopEar' ? [flopOuter.x] : [])) + xPad;
+  const y0 = Math.min(upper.y, lower.y, apex.y) - 4;
+  const y1 = Math.max(upper.y, lower.y, apex.y) + 4;
+  return { svg, box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+}
+
+/** 旧 gill は一根元・三枚ひれなので、根元点だけを body outline に一致させる。 */
+function legacyGillOnBody(ctx: DrawCtx, side: number, root: Vec, k: number): Local {
+  const tilt = (side * EAR_TILT.gill * Math.PI) / 180;
+  const a = Math.cos(tilt);
+  const b = Math.sin(tilt);
+  const c = -Math.sin(tilt);
+  const d = Math.cos(tilt);
+  const base = earShape(ctx, 'gill', k, { x: 0, y: 0 });
+  const e = root.x - c * 4;
+  const f = root.y - d * 4;
+  const corners = [
+    { x: base.box.x, y: base.box.y }, { x: base.box.x + base.box.w, y: base.box.y },
+    { x: base.box.x, y: base.box.y + base.box.h }, { x: base.box.x + base.box.w, y: base.box.y + base.box.h },
+  ].map((p) => ({ x: a * p.x + c * p.y + e, y: b * p.x + d * p.y + f }));
+  const x0 = Math.min(...corners.map((p) => p.x));
+  const x1 = Math.max(...corners.map((p) => p.x));
+  const y0 = Math.min(...corners.map((p) => p.y));
+  const y1 = Math.max(...corners.map((p) => p.y));
+  return { svg: `<g transform="matrix(${n(a)} ${n(b)} ${n(c)} ${n(d)} ${n(e)} ${n(f)})">${base.svg}</g>`, box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
 }
 
 export function buildEars(ctx: DrawCtx): PartOut[] {
@@ -855,29 +934,52 @@ export function buildEars(ctx: DrawCtx): PartOut[] {
   const asym = ctx.pheno.asymmetry;
   const k = clamp(0.82 + ctx.pheno.size * 0.24 + ctx.pheno.decorAmount * 0.16, 0.8, 1.25);
 
-  const integrated = new Set(['nub', 'round', 'longEar', 'catEar', 'bearEar', 'leafEar', 'roundLeafEar', 'gill']);
+  const integrated = new Set(['nub', 'round', 'longEar', 'catEar', 'bearEar', 'leafEar', 'roundLeafEar', 'bodyEar', 'flopEar']);
   if (integrated.has(kind)) {
     let svg = '';
     let bbox: Box | undefined;
-    const rootSpan = (kind === 'bearEar' ? 9 : kind === 'gill' ? 11 : 15) * k;
     for (const side of [-1, 1]) {
-      // 根元二点を実際の body outline から取る。位置・半径のマスクではなく、
-      // SVG 外周そのものが body 外周へ連続するための幾何学的な接続である。
+      const jitterK = 1 + asym * rng.float(-0.11, 0.11);
+      const localK = k * jitterK;
+      const rootSpan = (
+        kind === 'nub' ? 14 :
+        kind === 'round' ? 16 :
+        kind === 'longEar' ? 12 :
+        kind === 'catEar' ? 15 :
+        kind === 'bearEar' ? 11 :
+        kind === 'leafEar' ? 9 :
+        kind === 'flopEar' ? 13 :
+        15
+      ) * localK;
       const upperY = ay - rootSpan * 0.5;
       const lowerY = ay + rootSpan * 0.5;
-      const upper = { x: s.edgeX(upperY, side), y: upperY };
-      const lower = { x: s.edgeX(lowerY, side), y: lowerY };
-      const ear = integratedEar(ctx, kind, side, upper, lower, k);
+      const ear = integratedEar(ctx, kind, side,
+        { x: s.edgeX(upperY, side), y: upperY },
+        { x: s.edgeX(lowerY, side), y: lowerY },
+        localK,
+      );
       svg += ear.svg;
       bbox = boxUnion(bbox, ear.box);
     }
+    const fitted = shrinkToFit(svg, bbox, s.cx, s.topY + H * 0.4, VIEW, 2);
     return [{
-      id: 'ears',
-      z: Z.EAR_FRONT,
-      svg,
-      anchor: { id: 'ears', x: s.cx, y: ay, angle: 0, scale: k },
-      bbox,
+      id: 'ears', z: Z.EAR_FRONT, svg: fitted.svg,
+      anchor: { id: 'ears', x: s.cx, y: ay, angle: 0, scale: k }, bbox: fitted.bbox,
     }];
+  }
+
+  if (kind === 'gill') {
+    let svg = '';
+    let bbox: Box | undefined;
+    for (const side of [-1, 1]) {
+      const root = { x: s.edgeX(ay, side), y: ay };
+      const gill = legacyGillOnBody(ctx, side, root, k);
+      svg += gill.svg;
+      bbox = boxUnion(bbox, gill.box);
+    }
+    const fitted = shrinkToFit(svg, bbox, s.cx, s.topY + H * 0.4, VIEW, 2);
+    return [{ id: 'ears', z: Z.EAR_FRONT, svg: fitted.svg,
+      anchor: { id: 'ears', x: s.cx, y: ay, angle: 0, scale: k }, bbox: fitted.bbox }];
   }
 
   let svg = '';

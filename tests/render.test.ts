@@ -3,6 +3,7 @@ import type { CatLocus, CatPair, Genotype } from '../src/core/types.ts';
 import { phenotypeOf, randomGenotype } from '../src/genetics/index.ts';
 import { buildRenderModel } from '../src/render/model.ts';
 import { renderCreatureSvg } from '../src/render/creature.ts';
+import { inspectModel } from '../src/render/inspect.ts';
 import { makeSpecimen, rebuildSpecimen } from '../src/dev/gen.ts';
 
 const EYE_SHAPES = ['round', 'oval', 'wide', 'sleepy', 'leaf', 'crescent', 'starry', 'smirk'] as const;
@@ -46,6 +47,43 @@ function renderForcedPart(seed: string, locus: CatLocus, id: string): string {
   const model = buildRenderModel(pheno, null, { detail: 'full', uid: `part-test-${seed}` });
   return renderCreatureSvg(model, { animatable: false });
 }
+
+it('耳付き 1000 体で描画不良・非決定的 SVG を出さない', () => {
+  const ears = ['nub', 'round', 'longEar', 'flopEar', 'tuft', 'catEar', 'bearEar', 'leafEar', 'roundLeafEar', 'gill', 'bodyEar'] as const;
+  const integrated = new Set(['nub', 'round', 'longEar', 'flopEar', 'catEar', 'bearEar', 'leafEar', 'roundLeafEar', 'bodyEar']);
+  const issues: string[] = [];
+  for (let i = 0; i < 1000; i++) {
+    const kind = ears[i % ears.length]!;
+    const genotype = forcedPartGenotype(`EAR-1000-${i}`, 'ears', kind);
+    const model = buildRenderModel(phenotypeOf(genotype, 'adult'), null, { detail: 'full', uid: `ear-1000-${i}` });
+    const inspection = inspectModel(model);
+    const earIssues = inspection.issues.filter((issue) => issue.includes('ears'));
+    if (earIssues.length) issues.push(`${kind}:${earIssues.join(',')}`);
+    const earPart = model.parts.find((part) => part.id === 'ears');
+    if (integrated.has(kind) && earPart && /transform="[^"]*(?:matrix|scale)\(/.test(earPart.svg)) {
+      issues.push(`${kind}:${i}:scaled-outline`);
+    }
+    const first = renderCreatureSvg(model, { animatable: false });
+    const second = renderCreatureSvg(model, { animatable: false });
+    if (first !== second || /NaN|undefined/.test(first)) issues.push(`${kind}:non-deterministic-or-invalid-svg`);
+  }
+  expect(issues).toEqual([]);
+});
+
+it('一体化した耳は変形行列で線幅を変えず、体の輪郭より前で描く', () => {
+  const integrated = ['nub', 'round', 'longEar', 'flopEar', 'catEar', 'bearEar', 'leafEar', 'roundLeafEar', 'bodyEar'] as const;
+  for (const kind of integrated) {
+    const genotype = forcedPartGenotype(`EAR-OUTLINE-${kind}`, 'ears', kind);
+    const model = buildRenderModel(phenotypeOf(genotype, 'adult'), null, { detail: 'full', uid: `ear-outline-${kind}` });
+    const ears = model.parts.find((part) => part.id === 'ears');
+    const outline = model.parts.find((part) => part.id === 'outline');
+    expect(ears, kind).toBeDefined();
+    expect(outline, kind).toBeDefined();
+    expect(ears!.svg, kind).not.toContain('transform="matrix(');
+    expect(ears!.svg, kind).not.toMatch(/transform="[^"]*scale\(/);
+    expect(ears!.z, kind).toBeGreaterThan(outline!.z);
+  }
+});
 
 describe('まつ毛の描画', () => {
   it('目の形・瞳の種類に関係なく、まつ毛ありの SVG が差分を持つ', () => {
