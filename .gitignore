@@ -21,3 +21,12 @@ docs/lab-feedback.json
 # 肥大化するため除外。必要な比較画像は都度ユーザーへ送るか、残したいものだけ
 # 個別に `git add -f` する）
 docs/screenshots/
+
+# Chromium（Playwright）が作業ディレクトリに吐く GPU エラーログ。
+# スクリーンショット撮影のたびに増える実行時の生成物なのでコミットしない。
+debug.log
+
+# Claude Code のローカル設定・作業ディレクトリ。中に worktrees/（node_modules
+# ごと別ワークツリーを丸ごと持つことがある）が入るため、誤ってコミットすると
+# 数万ファイル規模の事故になる。個人環境の設定でもある。
+.claude/

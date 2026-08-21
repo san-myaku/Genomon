@@ -98,7 +98,7 @@ node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/
 
 ```bash
 npx tsc --noEmit     # 型チェック
-npx vitest run       # ユニットテスト（現在 192 件・12 ファイル）
+npx vitest run       # ユニットテスト（現在 230 件・16 ファイル）
 npx vite build       # 本番ビルド（dist/ に index.html 系だけが出ること）
 npx playwright test  # e2e（初回は `npx playwright install chromium` が要る）
 ```
@@ -113,9 +113,11 @@ SVG を目で見て確認する。** テストが green でも「合成された
 `ZLNX-BSZ2` の首かざり誤検出）はベースラインとして許容されているが、
 **件数を新たに増やしてはいけない。**
 
-**注意**: `tests/_lead_check.test.ts` は「検証後に削除する」と書かれた
-一時ファイルが消し忘れられたもの。今後このファイルを見つけたら、内容を
-恒久テストとして採用するか削除するか判断すること（現状は放置されているだけ）。
+**注意**: `tests/_lead_check.test.ts`（「検証後に削除する」と書かれた一時
+ファイルの消し忘れ）は 2026-08-15 に削除した。3 件とも `console.log` だけで
+**アサーションが 1 つも無く、絶対に落ちないテスト**だったため、残しても
+回帰を守れない。同種の「数値を眺めるだけの一時ファイル」を作ったときは、
+その場で消すか、アサーションを付けて恒久テストにすること。
 
 ## 見た目の確認手段
 
