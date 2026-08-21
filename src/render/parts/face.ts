@@ -47,9 +47,10 @@ import { Rng, clamp, lerp } from '../../core/rng.ts';
 import { Z, type DrawCtx, type PartOut } from '../ctx.ts';
 import { MOUTH_DOWN_RATIO, MOUTH_UP_RATIO, isSolidEye, isTallSolidEye, type EyeSlot } from './faceLayout.ts';
 import {
-  boxAround, boxUnion, circle, ellipse, leafPath, n, path, pathOpen, starPath, url, vec,
+  boxAround, boxUnion, circle, ellipse, leafPath, n, path, pathOpen, rad, starPath, url, vec,
   type Box, type Vec,
 } from '../svg.ts';
+import { LASH_SPRITES } from './lashSprites.ts';
 
 /**
  * 目の形ごとの描画スタイル。
@@ -60,7 +61,7 @@ import {
  *   まぶたの下り・虹彩の比率・目尻・まつげ・傾きまで形ごとに変え、
  *   シルエットの段階で見分けられるようにする。
  */
-interface EyeStyle {
+export interface EyeStyle {
   /** 上まぶたが目を覆う割合 0..1。 */
   lid: number;
   /** まぶたの弧の深さ（大きいほど丸く垂れる）。 */
@@ -190,7 +191,8 @@ const EYE_STYLE: Record<string, EyeStyle> = {
   smirk: { lid: 0.08, lidBow: 1.0, irisK: 0.9, irisAsp: 1, irisY: 0.1, motifK: 1, tilt: 22, lash: 0, lower: false },
 };
 
-const styleOf = (id: string): EyeStyle => EYE_STYLE[id] ?? EYE_STYLE.round!;
+/** 目の形 → 描画スタイル。**まつげの回帰テストからも参照する。** */
+export const styleOf = (id: string): EyeStyle => EYE_STYLE[id] ?? EYE_STYLE.round!;
 
 /**
  * ヘテロクロミア（左右で目の色が違う）が出る `asymmetry` のしきい値。
@@ -567,17 +569,18 @@ function motifMarkup(kind: string, m: MotifCtx): string {
     }
 
     case 'petalP': {
-      // はなびら: 5 枚の花。白へ寄りすぎると目の中で発光して見えるため、
-      // 虹彩の色を残した薄い花として置く。
+      // はなびら: 虹彩に溶ける、ごく薄い5枚の花。
+      // 明るい花弁を不透明にすると「目の上に白い部品を貼った」印象になるため、
+      // 面の色を主にし、花の存在は近くで初めて分かる程度に留める。
       let g = '';
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
         g += circle(Math.cos(a) * s * 0.38, py + Math.sin(a) * s * 0.38, s * 0.28, {
-          fill: mix(light, face, 0.38),
-          opacity: 0.68,
+          fill: mix(light, face, 0.72),
+          opacity: 0.42,
         });
       }
-      g += circle(0, py, s * 0.16, { fill: mix(deep, face, 0.35), opacity: 0.3 });
+      g += circle(0, py, s * 0.14, { fill: mix(deep, face, 0.56), opacity: 0.2 });
       return g;
     }
 
@@ -666,7 +669,7 @@ function motifMarkup(kind: string, m: MotifCtx): string {
       //   その子の目が「まるい」と同じ既定の意匠に化ける ＝
       //   プレイヤーから見れば **飼っている個体の見た目が勝手に変わる**。
       //   カタログから消えていることを理由に「もう使われていない死んだコード」と
-      //   判断して削除しないこと。同じ理由で `starSpikes` の `button` も残す。
+      //   判断して削除しないこと。
       //
       // 【点 4 つを「糸穴」として残す理由】
       //   濃い円だけだと、それは結局いちばん大きな瞳孔になる。
@@ -735,9 +738,11 @@ function motifMarkup(kind: string, m: MotifCtx): string {
       // 旧実装の4枚の花弁は中心で重なり、縮小時に細く尖った「バツ」へ
       // 潰れていた。丸い端点を持つ太い2本の曲線にして、面の中で読める
       // やわらかな X にする。
-      const a = s * 0.57;
-      const bend = s * 0.12;
-      const width = Math.max(3.2, s * 0.3);
+      // 腕を短く、端を丸く太くする。細長いXではなく、眼の面に沈む
+      // ぷっくりした「ばつ」の印として読める比率。
+      const a = s * 0.5;
+      const bend = s * 0.1;
+      const width = Math.max(3.6, s * 0.38);
       let g = path(
         `M${n(-a)} ${n(py - a)}Q${n(-bend)} ${n(py - bend)} ${n(a)} ${n(py + a)}`,
         { stroke: deep, width, linecap: 'round', linejoin: 'round', opacity: 0.94 },
@@ -748,52 +753,12 @@ function motifMarkup(kind: string, m: MotifCtx): string {
       );
       // 4 枚がちょうど点で接するだけだと、96px では中心に小さな穴が
       // 開いた十字に見える。中心を同じ色で軽く埋めて 1 つの X に見せる。
-      g += circle(0, py, s * 0.2, { fill: deep });
+      g += circle(0, py, s * 0.22, { fill: deep });
       return g;
     }
 
     default:
       return '';
-  }
-}
-
-/**
- * 意匠の種類 → 星の先端数（ほしぞらの目で使う）。
- * 『ほしぞら』は虹彩が夜空・中心が星という形質そのものなので意匠を上書きするが、
- * 星の形に意匠の遺伝子を反映させて、遺伝子が絵から消えないようにする。
- */
-function starSpikes(pupil: string): number {
-  switch (pupil) {
-    case 'sparkle':
-      return 4;
-    case 'ring':
-      return 6;
-    case 'slit':
-      return 3;
-    case 'petalP':
-      return 5;
-    case 'bead':
-      return 8;
-    case 'compound':
-      return 7;
-    case 'gloss':
-      // つやだま: 丸い意匠なので、先端の多い（＝丸に近い）星にする。
-      return 6;
-    case 'capsule':
-      return 2;
-    case 'catEye':
-      return 3;
-    case 'button':
-      // カタログから外れた対立遺伝子。既存のセーブのために残す
-      // （理由は `motifMarkup` の `button` を参照）。
-      return 4;
-    case 'swirl':
-      return 9;
-    case 'batsu':
-      // ばつじるし: X 字も 4 枚の弁でできているので、星も 4 先端に揃える。
-      return 4;
-    default:
-      return 5;
   }
 }
 
@@ -827,8 +792,8 @@ function quadraticY(t: number, p0: number, p1: number, p2: number): number {
   return u * u * p0 + 2 * u * t * p1 + t * t * p2;
 }
 
-/** 白目（点目ならその面）の上側輪郭上の y 座標。 */
-function upperContourY(shapeId: string, rx: number, ry: number, x: number): number {
+/** 白目（点目ならその面）の上側輪郭上の y 座標。**テストからも参照する。** */
+export function upperContourY(shapeId: string, rx: number, ry: number, x: number): number {
   const t = clamp((x + rx) / (2 * rx), 0, 1);
   switch (shapeId) {
     case 'leaf':
@@ -842,23 +807,6 @@ function upperContourY(shapeId: string, rx: number, ry: number, x: number): numb
       return -ry * Math.sqrt(Math.max(0, 1 - nx * nx));
     }
   }
-}
-
-/** 上まぶたの見えている下辺上の y 座標。まぶたが無ければ null。 */
-function upperLidY(rx: number, ry: number, st: EyeStyle, lid: number, x: number): number | null {
-  if (lid <= 0.015) return null;
-  const bow = st.lidBow;
-  const yc = -ry + ry * 2 * lid;
-  const sag = Math.min(
-    rx * lerp(0.1, 0.18, clamp((bow - 0.66) / 0.64, 0, 1)),
-    Math.max(0, (ry - yc) * 0.42),
-  );
-  const yMid = yc + sag;
-  const yEdge = yc - ry * (0.3 + 0.2 * bow);
-  const cpy = (8 * yMid - 2 * yEdge) / 6;
-  const w = rx * 1.34;
-  const t = clamp((x + w) / (2 * w), 0, 1);
-  return cubicY(t, yEdge, cpy, cpy, yEdge);
 }
 
 /** 点目で眠たげに上から覆われたときの、実際に見える上辺。 */
@@ -879,12 +827,26 @@ function closedUpperY(rx: number, ry: number, x: number): number {
   return quadraticY(t, h * 0.3, -h * 1.15, h * 0.3);
 }
 
-/** 下まつ毛の付け根を目の下辺へ合わせる。 */
+/**
+ * 白目の **下側の輪郭** 上の y 座標。下まつ毛を目の下辺へ合わせるのに使う。
+ *
+ * 【2026-08-15 `whiteShape` の実際の曲線に合わせ直した — レビュー B-1 の原因】
+ *   以前は ねむたげ・このは を 2 次式で近似していたが、実際に描かれている
+ *   下辺（`whiteShape` の 2 本目の C コマンド）より **かなり内側** だった。
+ *     ねむたげ … 近似の最下点 0.65ry / 実際 0.91ry
+ *     このは   … 近似の最下点 0.82ry / 実際 0.94ry
+ *   下まつ毛の付け根がこのぶんだけ目の中へ入り、とげが虹彩の上に並んで
+ *   **歯** のように見えていた。ここは `whiteShape` と対になる値なので、
+ *   あちらを変えたらこちらも合わせること。
+ *   下辺の C は右端 → 左端の向きに引かれているので `t` も右から数える。
+ */
 function lowerContourY(shapeId: string, rx: number, ry: number, x: number): number {
-  if (shapeId === 'crescent' || shapeId === 'smirk') return closedUpperY(rx, ry, x) + ry * 0.12;
-  const t = clamp((x + rx) / (2 * rx), 0, 1);
-  if (shapeId === 'sleepy') return quadraticY(t, ry * 0.48, ry * 0.82, ry * 0.62);
-  if (shapeId === 'leaf') return quadraticY(t, ry * 0.62, ry * 0.98, ry * 0.68);
+  // 閉じ目は弧そのものがインク。中心線を返し、線幅ぶんは呼び出し側で足す。
+  if (shapeId === 'crescent' || shapeId === 'smirk') return closedUpperY(rx, ry, x);
+  const t = clamp((rx - x) / (2 * rx), 0, 1);
+  if (shapeId === 'sleepy') return cubicY(t, -ry * 0.2, ry * 1.35, ry * 1.3, -ry * 0.5);
+  if (shapeId === 'leaf') return cubicY(t, -ry * 0.12, ry * 1.3, ry * 1.3, ry * 0.06);
+  if (shapeId === 'wide') return cubicY(t, -ry * 0.1, ry * 1.3, ry * 1.3, -ry * 0.1);
   return ry * Math.sqrt(Math.max(0, 1 - Math.pow(clamp(x / rx, -1, 1), 2)));
 }
 
@@ -892,91 +854,657 @@ function lidValue(st: EyeStyle, droop: number): number {
   return clamp(st.lid + droop * 0.36, 0, 0.8);
 }
 
-/** 目の形にかかわらず、まつ毛を実際の目の上辺へ接続する。 */
-function drawLashes(ctx: DrawCtx, slot: EyeSlot, shapeId: string, st: EyeStyle, lashRoom: number): string {
+/** 上まぶたの見えている下辺上の y 座標。まぶたが無ければ null。 */
+function upperLidY(rx: number, ry: number, st: EyeStyle, lid: number, x: number): number | null {
+  if (lid <= 0.015) return null;
+  const bow = st.lidBow;
+  const yc = -ry + ry * 2 * lid;
+  const sag = Math.min(
+    rx * lerp(0.1, 0.18, clamp((bow - 0.66) / 0.64, 0, 1)),
+    Math.max(0, (ry - yc) * 0.42),
+  );
+  const yMid = yc + sag;
+  const yEdge = yc - ry * (0.3 + 0.2 * bow);
+  const cpy = (8 * yMid - 2 * yEdge) / 6;
+  const w = rx * 1.34;
+  const t = clamp((x + w) / (2 * w), 0, 1);
+  return cubicY(t, yEdge, cpy, cpy, yEdge);
+}
+
+/**
+ * まつげを載せる線＝**その目の「上のインク」の下辺**。
+ *
+ * 【2026-08-15 目の外周から、インクの下辺へ変更した — レビューでの指摘】
+ *   それまでは目の外周（`upperContourY`）を基準にしていた。つまりまつげは
+ *   **目の外の地肌の上に、目とは接しないで置かれていた**。その結果:
+ *     ・みかづき／したりめ … 弧の上に黒い塊が浮き、白いつやが目に見えて
+ *       「まつげ」ではなく **黒い動物** に読めた（レビュー A-1）
+ *     ・ねむたげ／このは … 元から太いまぶたのインクの **上に** さらに
+ *       同じ大きさの塊が積み上がり、上半分が黒い「ヘルメット」になった（A-2）
+ *   絵として正しいのは「まぶたの線とまつげがひとつながりの塊になり、
+ *   その **外側の輪郭がまつげの形** になる」置きかた。そのためには
+ *   まつげの下辺をインクの下辺に合わせ、**インクへ重ねる**必要がある。
+ *   こうすると黒い面積は「まぶた＋まつげ」ではなく「まつげ」だけになり、
+ *   浮きも塊化も同時に消える。
+ *
+ * 【`droop` に追従するようになった副次効果 — レビュー B-2】
+ *   まぶたの下辺は `lidValue(st, droop)` で下りてくるので、基準線を
+ *   ここにすると **まつげも一緒に下りる**。以前は目の外周が基準で
+ *   `droop` を含まなかったため、元気のない個体ではまぶたのインクだけが
+ *   下りてまつげを飲み込み、まつげが消えていた。
+ */
+export function lashBaseY(
+  ctx: DrawCtx,
+  shapeId: string,
+  st: EyeStyle,
+  rx: number,
+  ry: number,
+  x: number,
+): number {
+  if (shapeId === 'crescent' || shapeId === 'smirk') {
+    // 閉じ目は太い弧そのものがインク。その **下辺** に載せる
+    // （弧は中心線なので、線幅の半分だけ下げたところが下辺）。
+    return closedUpperY(rx, ry, x) + ctx.strokeW * 0.575;
+  }
+  if (isSolidEye(ctx.parts)) {
+    // 点目は面全体がインク。上端に重ねる。
+    return solidUpperY(rx, ry, shapeId, ctx.mood.droop, x);
+  }
+  if (isTallSolidEye(shapeId)) {
+    // 【たまご（べた目）だけ まぶたの線を基準にしない — レビュー第2ラウンド】
+    //   たまごは **白目を持たない**。器の中はまるごと濃い虹彩で、インクとの
+    //   明度差は実測 1.2〜1.8:1（1.0 で同色）しかない。ここでまぶたの線
+    //   （器の内側にある）を基準にすると、まつげのうち器に重なった部分が
+    //   **色が同じで消え**、器からはみ出した細い毛だけが残る。製品オーナーの
+    //   「目と離れている／原画ほどのクオリティが無い」はこれが原因だった。
+    //   器の **外周リング** に載せて、まつげ本体を地肌の上（コントラスト
+    //   4〜6.7:1）に置く。原画の帯がそのまま読めるようになる。
+    return upperContourY(shapeId, rx, ry, x) + ctx.strokeW * 0.41;
+  }
+  const lid = lidValue(st, ctx.mood.droop);
+  return (
+    upperLidY(rx, ry, st, lid, x) ??
+    // まぶたを下ろさない形（ぱっちり）は、輪郭リングそのものが上のインク。
+    upperContourY(shapeId, rx, ry, x) + ctx.strokeW * 0.5
+  );
+}
+
+/**
+ * 傾きを制限した基準線。`xa` を動かさない点として、そこから左右へ
+ * 「1 歩あたり `maxSlope` まで」しか上下しない折れ線を積み上げる。
+ *
+ * 【一律の上限（`tanh` で頭打ち）をやめた理由】
+ *   以前はしなり量そのものに上限を置いていた。しかしこれは
+ *     ・弧が急な目（みかづき）… 追従しきれず **浮く**
+ *     ・縦長の目（たまご）… 端で輪郭が垂直に落ちるので **回り込む**
+ *   の両方を同時には解決できない。上限を上げれば囲いになり、
+ *   下げれば浮く、というトレードオフの正体は「しなりの大きさ」ではなく
+ *   **傾き**（どれだけ急に降りるか）だった。
+ *   ・まぶたに貼り付いて見えるかどうか → 追従できているか
+ *   ・目を囲って見えるかどうか       → 横から下へ回り込む急さ
+ *   なので、制限すべきは傾きのほう。こうすると みかづきの弧
+ *   （中央付近はゆるやか）は最後まで追従でき、たまごの端
+ *   （垂直に落ちる）だけが頭打ちになる。
+ */
+function slopeLimited(
+  edge: (x: number) => number,
+  x0: number,
+  x1: number,
+  xa: number,
+  maxSlope: number,
+): (x: number) => number {
+  const N = 33;
+  const step = (x1 - x0) / (N - 1);
+  if (!(step > 0)) return () => edge(xa);
+  const xs: number[] = [];
+  for (let i = 0; i < N; i++) xs.push(x0 + step * i);
+  let ai = 0;
+  for (let i = 1; i < N; i++) if (Math.abs(xs[i]! - xa) < Math.abs(xs[ai]! - xa)) ai = i;
+  const ys: number[] = new Array(N).fill(0);
+  const lim = maxSlope * step;
+  ys[ai] = edge(xs[ai]!);
+  for (let i = ai + 1; i < N; i++) {
+    ys[i] = ys[i - 1]! + clamp(edge(xs[i]!) - edge(xs[i - 1]!), -lim, lim);
+  }
+  for (let i = ai - 1; i >= 0; i--) {
+    ys[i] = ys[i + 1]! + clamp(edge(xs[i]!) - edge(xs[i + 1]!), -lim, lim);
+  }
+  return (x: number): number => {
+    const t = clamp((x - x0) / step, 0, N - 1);
+    const i = Math.min(N - 2, Math.floor(t));
+    return lerp(ys[i]!, ys[i + 1]!, t - i);
+  };
+}
+
+/**
+ * 原画自身の反りを 2 次式（最小二乗）で近似する。
+ *
+ * 【生の折れ線を使わない理由】
+ *   `profBot` の両端は、本体ではなく **尾や先端のとげ** の位置になっている
+ *   （`tools/genLashSprites.mjs` が幅 4% の窓で上下端を拾うため）。
+ *   これをそのまま「原画自身の反り」として差し引くと、尾やとげだけが
+ *   逆向きに引っぱられて形が崩れる。知りたいのは「この原画は全体として
+ *   どれだけ反っているか」なので、2 次式に落として先端の暴れを捨てる。
+ */
+const spriteArcCache = new Map<readonly number[], [number, number, number]>();
+function spriteArcOf(prof: readonly number[]): (u: number) => number {
+  let co = spriteArcCache.get(prof);
+  if (!co) {
+    const N = prof.length;
+    if (N < 3) {
+      co = [N ? prof[0]! : 0, 0, 0];
+    } else {
+      // y = a + b u + c u^2 の正規方程式を、u の冪和から直接解く。
+      let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, t0 = 0, t1 = 0, t2 = 0;
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        const y = prof[i]!;
+        const u2 = u * u;
+        s0 += 1; s1 += u; s2 += u2; s3 += u2 * u; s4 += u2 * u2;
+        t0 += y; t1 += y * u; t2 += y * u2;
+      }
+      // 3x3 をクラメルの公式で解く
+      const det =
+        s0 * (s2 * s4 - s3 * s3) - s1 * (s1 * s4 - s3 * s2) + s2 * (s1 * s3 - s2 * s2);
+      if (Math.abs(det) < 1e-12) {
+        co = [t0 / N, 0, 0];
+      } else {
+        const da =
+          t0 * (s2 * s4 - s3 * s3) - s1 * (t1 * s4 - t2 * s3) + s2 * (t1 * s3 - t2 * s2);
+        const db =
+          s0 * (t1 * s4 - t2 * s3) - t0 * (s1 * s4 - s3 * s2) + s2 * (s1 * t2 - s2 * t1);
+        const dc =
+          s0 * (s2 * t2 - s3 * t1) - s1 * (s1 * t2 - s2 * t1) + t0 * (s1 * s3 - s2 * s2);
+        co = [da / det, db / det, dc / det];
+      }
+    }
+    spriteArcCache.set(prof, co);
+  }
+  const [a, b, c] = co;
+  return (u: number): number => {
+    const t = clamp(u, 0, 1);
+    return a + b * t + c * t * t;
+  };
+}
+
+/**
+ * まつげの置きかた。原画（`LASH_SPRITES`）は「片目ぶんのまつげ」1 枚として
+ * 描かれているので、遺伝子の種類ごとに **どの原画を・どれだけの大きさで・
+ * どこに** 置くかだけを決めればよい。
+ *
+ *   sprite  : `LASH_SPRITES` のキー
+ *   outerAt : **原画のどこが目尻に当たるか**（インク幅に対する比 0..1）。
+ *             原画は「本体が目をまたぎ、その先の枝分かれが目尻からはみ出す」
+ *             構図で描かれている。全体幅を目の幅に合わせてしまうと枝分かれが
+ *             目の上に乗ってしまうので、**本体の終わり**を目尻に合わせる。
+ *             ここより右（＝1 との差）が目尻からのはみ出しになる。
+ *   anchor  : まぶたへ合わせる基準線に、原画の上端(`top`)と下端(`bot`)のどちらを使うか。
+ *             上まつ毛は下端をまぶたに載せる。とじ目型（下まつ毛・おねむ）は
+ *             上端を目のふちに合わせて、とげを内側へ垂らす
+ *   shiftX  : 置き始めを目頭からどれだけずらすか（rx 比。負で内側へ食い込む）
+ *   shiftY  : 基準線の上下微調整（ry 比。正で下＝瞳側）
+ *   lower   : 下まぶた側に置くか
+ */
+interface LashPlacement {
+  sprite: string;
+  outerAt: number;
+  shiftX: number;
+  /**
+   * まぶたのインクの下辺へ、まつげの下辺をどれだけ **沈める** か。
+   * 0 でちょうど接する。正の値でインクの中へ食い込み、まつげとまぶたが
+   * ひとつながりの塊になる（＝黒い面積が増えない）。
+   */
+  sink: number;
+  /**
+   * まつげのインクの高さの上限（ry 比）。指定すると、幅から決めた倍率が
+   * これを超える場合に全体を縮める。
+   *
+   * 【下まつ毛にこれが要る理由】
+   *   倍率を **幅だけ** から決めると、横長の目（このは・ねむたげ）では
+   *   `ry` が小さいのに まつげは目の幅なりに大きくなる。下まつ毛の原画は
+   *   「帯＋下向きのとげ」なので、背が高すぎると帯が目の中へ入り、
+   *   とげが虹彩の上に並んで **歯** に見える。逆に沈めて隠すと、
+   *   とげの先だけが飛び飛びに覗いて **点線** になる。
+   *   高さそのものを目の高さで抑えるのが正しい。
+   */
+  maxH?: number;
+  /** 全体の大きさ倍率。1 で「本体の終わりが目尻に届く」大きさ。 */
+  sizeK?: number;
+  lower?: boolean;
+}
+
+/**
+ * 【2026-08-15 まつげを原画スプライトに置き換え — 製品オーナーの指示】
+ *   「別添を素材にいい感じにできない？」という指示とともに
+ *   `art/eyelashes_sprite.svg`（8 種のまつげの原画）を受け取った。
+ *
+ *   それまでは同じ日に 2 度、手続き的な作図で参考イメージに寄せようとして
+ *   いた（版1: 棘の束／版2: 太さの変わる 1 本の帯）。版2 は 5 周ぶん調律
+ *   しても「ちょっとは良くなったけど、まだ微妙」という評価だった。
+ *   **近似をやめて原画そのものを使う。**
+ *
+ *   原画の 8 種のうち 7 種が既存の対立遺伝子とそのまま 1 対 1 で対応する
+ *   （`07_droopy` だけが余り。対立遺伝子を増やすかは製品オーナーの判断待ち
+ *   なので、いまはカタログに足していない＝描かれない）。
+ *
+ *   手続き的な作図では出せなかったのに原画にはあった要素:
+ *     ・先端の **枝分かれ（プロング）** が 2〜3 本ある種類がある
+ *     ・まつげの上に **白いつやの点** が乗る
+ *   どちらも「1 本の帯」を数式で作る方式では表現できていなかった。
+ */
+const LASH_PLACEMENT: Readonly<Record<string, LashPlacement>> = {
+  short:    { sprite: '01_short',         outerAt: 0.84, shiftX: -0.04, sink: 0.30 },
+  mid:      { sprite: '02_slightly_long', outerAt: 0.80, shiftX: -0.04, sink: 0.30 },
+  long:     { sprite: '03_long',          outerAt: 0.80, shiftX: -0.04, sink: 0.30 },
+  sideLong: { sprite: '04_side_long',     outerAt: 0.78, shiftX: 0,     sink: 0.30 },
+  upper:    { sprite: '05_upper_only',    outerAt: 0.90, shiftX: -0.04, sink: 0.30 },
+  droopy:   { sprite: '07_droopy',        outerAt: 0.86, shiftX: -0.04, sink: 0.30 },
+  // おねむ: **目の下** に付ける。
+  //
+  // 【上まぶたから下へ移した理由 — 製品オーナーの指摘 4 件】
+  //   原画は「とげが下へ垂れた」構図で、上まぶたに置くと目の上を横切る
+  //   横棒に見えていた。2026-08-16 に 4 個体で「目の下のほうがいい」と
+  //   指摘があり、いずれも手で **目の高さぶん（上まぶた→目の下）** 下げて
+  //   あった（`7HWU-CD8Q` +41.5、`NL7X-XFNK` +23.1、`WBF4-HRWG` +10.8、
+  //   `LD9V-5F8V` +40.5。どれも目の上端から下端の外へ移す量）。
+  //   下まつげ（`lower`）と同じ土台に載せ、原画だけ おねむ のものを使う。
+  sleepy:   { sprite: '08_sleepy',        outerAt: 0.94, shiftX: -0.02, sink: 0.04, sizeK: 0.88, maxH: 0.34, lower: true },
+  // 下まつげ: 短くして目のふちに寄せる。長いままだと下向きのとげが
+  // 目から離れて **虫の脚** に見えた（レビュー B-1）。
+  //   `maxH` で背丈を目の高さの 32% に抑えるのが要点。抑えないと、横長の目
+  //   （このは・ねむたげ）で帯が目の中へ入って **歯** に見え、それを沈めて
+  //   隠すと今度はとげの先だけが飛び飛びに覗いて **点線** になる。
+  lower:    { sprite: '06_lower_only',    outerAt: 0.94, shiftX: -0.02, sink: 0.04, sizeK: 0.9, maxH: 0.32, lower: true },
+};
+
+/**
+ * まつげが目の側面へ回り込んでよい急さの上限（dy/dx）。
+ * これを超える傾きの区間では、まつげはまぶたの線に追従するのをやめる。
+ * 大きくすると縦長の目（たまご）で「囲い」になり、
+ * 小さくすると弧の急な目（みかづき）で浮く。
+ */
+// 崖（上記 `edgeHold`）を取り除いたので、ここは「目のドームにどこまで沿うか」
+// だけを決める値になった。まるめの目はふち近くで傾き 2 前後まで上がるので、
+// 1.15 では途中で追従をやめてしまう。縦長の目（たまご）はさらに急なので、
+// そちらは引き続きここで頭打ちになり、側面へ回り込まない。
+const LASH_MAX_SLOPE = 2.4;
+
+/** 点の集まりを囲む矩形。まつげのように矩形で表せない絵の bbox に使う。 */
+function boxOfPoints(pts: readonly Vec[]): Box | undefined {
+  if (!pts.length) return undefined;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const q of pts) {
+    if (q.x < x0) x0 = q.x;
+    if (q.y < y0) y0 = q.y;
+    if (q.x > x1) x1 = q.x;
+    if (q.y > y1) y1 = q.y;
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** まつげ 1 枚の描画結果。`probes` は目のローカル座標での輪郭上の点。 */
+interface LashOut {
+  svg: string;
+  probes: readonly Vec[];
+}
+
+const NO_LASH: LashOut = { svg: '', probes: [] };
+
+/**
+ * ローカル座標の点列を `translate(cx cy) rotate(deg)` で親の座標系へ移す
+ * （目のグループは形ごとに傾いているため）。
+ */
+function rotatePointsAt(pts: readonly Vec[], cx: number, cy: number, deg: number): Vec[] {
+  const a = rad(deg);
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  return pts.map((p) => ({ x: cx + p.x * cos - p.y * sin, y: cy + p.x * sin + p.y * cos }));
+}
+
+/**
+ * その種類のまつげが「下まつげ」か（目の下辺を基準に置くか）。
+ * **テストからも参照する** — どの対立遺伝子が下側かは
+ * `LASH_PLACEMENT` が正本で、テストに同じ一覧を書き写すと必ずずれる。
+ */
+export const isLowerLash = (kind: string): boolean =>
+  !!LASH_PLACEMENT[kind === 'lash' ? 'short' : kind]?.lower;
+
+/** 目の形にかかわらず、まつ毛を実際のまぶたのインクへ接続する。 */
+function drawLashes(
+  ctx: DrawCtx,
+  slot: EyeSlot,
+  shapeId: string,
+  st: EyeStyle,
+  lashRoom: number,
+  /** 目のグループの回転（度）。体の輪郭と突き合わせるのに要る。 */
+  tiltDeg: number,
+): LashOut {
   const kind = ctx.parts.lashes;
-  if (!kind || kind === 'none' || lashRoom <= 0.5) return '';
+  if (!kind || kind === 'none' || lashRoom <= 0.5) return NO_LASH;
+
+  const style = kind === 'lash' ? 'short' : kind;
+  const place = LASH_PLACEMENT[style];
+  if (!place) return NO_LASH;
+  const sprite = LASH_SPRITES[place.sprite];
+  if (!sprite) return NO_LASH;
 
   const { rx, ry, dir } = slot;
-  // 2 つ目は外側へ寄せ、1 つ目なら中央に置く。サイド長めだけは
-  // さらに外側へ置いて、目尻から流れるシルエットを作る。
-  const style = kind === 'lash' ? 'short' : kind;
-  const lx = dir === 0 ? 0 : dir * rx * (style === 'sideLong' ? 0.72 : 0.6);
-  const lid = lidValue(st, ctx.mood.droop);
-  const lower = style === 'lower';
-  let ly: number;
-  if (lower) {
-    ly = lowerContourY(shapeId, rx, ry, lx);
-  } else if (shapeId === 'crescent' || shapeId === 'smirk') {
-    ly = closedUpperY(rx, ry, lx);
-  } else if (isSolidEye(ctx.parts)) {
-    ly = solidUpperY(rx, ry, shapeId, ctx.mood.droop, lx);
-  } else {
-    ly = upperLidY(rx, ry, st, lid, lx) ?? upperContourY(shapeId, rx, ry, lx);
-  }
-
-  const fan: Readonly<Record<string, readonly [number, number][]>> = {
-    short: [[-20, 0.82], [0, 1], [20, 0.86]],
-    mid: [[-24, 0.84], [-8, 1], [10, 0.96], [26, 0.78]],
-    long: [[-30, 0.8], [-11, 1], [8, 1.08], [26, 0.92]],
-    sideLong: [[-12, 0.62], [6, 0.94], [24, 1.16], [40, 0.82]],
-    upper: [[-30, 0.58], [-12, 0.92], [7, 1.04], [24, 0.8]],
-    lower: [[-28, 0.66], [-9, 1], [12, 0.96], [30, 0.7]],
-    sleepy: [[-36, 0.58], [-16, 0.88], [5, 1], [25, 0.76]],
-  };
-  const fanForStyle = fan[style] ?? fan.short;
-  const lenK: Readonly<Record<string, number>> = {
-    short: 0.58,
-    mid: 0.72,
-    long: 0.92,
-    sideLong: 0.86,
-    upper: 0.7,
-    lower: 0.52,
-    sleepy: 0.62,
-  };
   const mirror = dir === 0 ? 1 : dir;
-  const baseLen = Math.min(ry * (lenK[style] ?? 0.58), lashRoom * 0.85, rx * 0.72);
-  if (baseLen <= 2.2) return '';
 
-  if (lower) {
-    // 下まつ毛は1点から4本を束ねると、目の下で線が交差して汚く見える。
-    // 付け根を3点に分け、短い丸線を等間隔に置いて清潔な下縁にする。
-    const lowerLen = Math.min(baseLen * 0.78, ry * 0.34, rx * 0.32);
-    const lowerFan: readonly [number, number][] = [[-24, 0.68], [0, 0.82], [24, 0.68]];
-    let clean = '';
-    for (const [angDeg, fanLenK] of lowerFan) {
-      const rad = (angDeg * Math.PI) / 180;
-      const len = lowerLen * fanLenK;
-      const ex = lx + mirror * Math.sin(rad) * len;
-      const ey = ly + Math.cos(rad) * len;
-      const cx = lx + mirror * Math.sin(rad) * len * 0.46;
-      const cy = ly + Math.cos(rad) * len * 0.46 + len * 0.1;
-      clean += path(`M${n(lx)} ${n(ly)}Q${n(cx)} ${n(cy)} ${n(ex)} ${n(ey)}`, {
-        stroke: ctx.colors.inkPaint,
-        width: ctx.strokeThin * 1.18,
-        linecap: 'round',
-      });
+  // まつげを載せる基準線＝**まぶたのインクの下辺**（`lashBaseY` の説明を参照）。
+  // 下まつげは目の下のインクの外辺。
+  const rawBase = (x: number): number =>
+    place.lower
+      ? lowerContourY(shapeId, rx, ry, x) + ctx.strokeW * 0.5
+      : lashBaseY(ctx, shapeId, st, rx, ry, x);
+  // `x` は mirror を掛ける前の座標。輪郭は左右非対称な形（このは・ねむたげ）が
+  // あるので、実際の目のどちら側かに合わせて引く。
+  //
+  // 【目の幅の外では、ふちの高さを保つ — 2026-08-16「目とまつげのカーブが
+  //   合っていない」6 件の原因】
+  //   `upperContourY` は |x| ≧ rx で **0（目の縦中心）** を返す。まつげは
+  //   目尻の外へも伸びるので、そこで基準線が `-ry` から `0` へ **崖のように
+  //   落ちる**。`slopeLimited` はこの崖をならすのに傾きの許容量を使い切って
+  //   しまい、肝心の「目のドームに沿う」ぶんが残らなかった。
+  //   結果、まるめ・ほしぞらでまつげが目の上に浮いて見えていた。
+  //   目の幅の外は、ふちの高さのまま伸ばす（崖を無くす）。
+  //   保つ位置は「目のインクが実際にどこまであるか」。閉じ目の弧は
+  //   `closedUpperY` が `w = rx * 1.08` の範囲で引かれていて、しかも
+  //   その外では自分で値を保つ（崖にならない）。0.9rx で止めると弧の
+  //   いちばん急に下りるところで追従をやめてしまい、目尻側で離れていた。
+  const closedEye = shapeId === 'crescent' || shapeId === 'smirk';
+  const edgeHold = rx * (closedEye ? 1.08 : 0.9);
+  const baseAt = (x: number): number =>
+    rawBase(clamp(mirror * x, -edgeHold, edgeHold));
+
+  // ── 大きさ ────────────────────────────────────────────────
+  //   原画は「幅 1」に正規化されていて、実際のインクは box.x0〜box.x1 に載る。
+  //   縦横は同じ倍率で拡大する（別々に伸ばすと、縦長の目・平たい目で
+  //   原画の線が歪み、手描きの筆致が台無しになる）。
+  //
+  //   倍率は「原画の `outerAt` の位置が、目尻にちょうど重なる」ように決める。
+  //   全体幅を目の幅に合わせると、目尻からはみ出すはずの枝分かれが目の上に
+  //   乗ってしまう（最初にそう実装して、実際にそう見えた）。
+  const inkW = sprite.box.x1 - sprite.box.x0;
+  if (inkW <= 0 || place.outerAt <= 0) return NO_LASH;
+  const spanL = -rx + place.shiftX * rx;
+  const spanC = (spanL + rx) / 2;
+  let scale = ((rx - spanL) / (place.outerAt * inkW)) * (place.sizeK ?? 1);
+
+  // 目尻からのはみ出しは、体の輪郭までの余白に収める。越える場合は
+  // まつげ全体を縮める（原画の形は保ったまま小さくなる）。
+  const rightOf = (s: number): number => spanC + inkW * s * (1 - place.outerAt / 2);
+  if (rightOf(scale) - rx > lashRoom) {
+    const fit = (rx + lashRoom - spanC) / (inkW * (1 - place.outerAt / 2));
+    if (!(fit > 0)) return NO_LASH;
+    scale = Math.min(scale, fit);
+  }
+  // 高さの上限（下まつ毛用。`maxH` の説明を参照）
+  //
+  // 【閉じ目にも高さの上限が要る — 2026-08-16「カーブが合っていない」】
+  //   みかづき・したりめは **細い弧 1 本** が目のすべて（線幅 strokeW×1.15）。
+  //   原画の帯はその 4 倍ほど厚く、そのまま載せると弧を置き換えてしまい、
+  //   両端の枝分かれだけが外へ飛び出して「脚の生えた別の生きもの」に見える。
+  //   弧に添える細いまつげとして読める高さまで抑える。
+  const inkH = sprite.box.y1 - sprite.box.y0;
+  const maxH = closedEye ? Math.min(place.maxH ?? Infinity, 1.3) : place.maxH;
+  if (maxH !== undefined && Number.isFinite(maxH) && inkH > 0) {
+    scale = Math.min(scale, (maxH * ry) / inkH);
+  }
+  if (inkW * scale < 2) return NO_LASH;
+
+  // ── 位置 ──────────────────────────────────────────────────
+  // 置き始めと倍率は `buildAt` の中で決める（輪郭に収まるまで縮めるため、
+  // 倍率が確定するのは最後）。しならせる基準の x だけはここで固定する。
+  const anchorX = spanC;
+
+  // ── まぶたの線に合わせてしならせる ──────────────────────────
+  //
+  // 【なぜ「拡大して置く」だけでは足りないか — 実測して分かった】
+  //   原画の弧は、目のドームよりずっと浅い。原画の下辺は中央から端まで
+  //   幅の 13% ほどしか下がらないのに対し、目のふちは半幅ぶん進む間に
+  //   `ry` まるごと下がる。中央で合わせると **両脇が上へ浮く**。
+  //
+  //   原画を縦だけ引き伸ばすと手描きの線が歪むので、代わりに
+  //   **各点をまぶたの曲線ぶんだけ縦にずらす**（＝原画をしならせる）。
+  //   移すのは（まぶたの曲がり）−（原画自身の反り）の **差分だけ**。
+  //   両者の曲率が合っていれば差は 0 になり、原画は変形しない。
+  //
+  //   差分をそのまま全部与えると縦長の目で側面へ回り込むので、
+  //   基準線のほうを `slopeLimited` で「急すぎない線」に均してから使う
+  //   （しなり量そのものに上限を置くやり方をやめた経緯は `slopeLimited`）。
+  const arc = spriteArcOf(place.lower ? sprite.profTop : sprite.profBot);
+  const sinkDir = place.lower ? -1 : 1;
+
+  // ── 沈める量は「下に白目があるか」で変える ────────────────
+  //
+  // 【2026-08-15 製品オーナーの指摘「目と離れている／原画ほどのクオリティが無い」】
+  //   `sink` は本来「まぶたのインクへ食い込ませて、ひとつながりの塊に見せる」
+  //   ための値。白目のある目ではインクの下が明るいので、少し深く沈めても
+  //   まつげの下辺が白の上に出て **太いまつげの線** として読める。
+  //
+  //   ところが **たまご（べた目）と つぶら（点目）は白目を持たない**。
+  //   器の中はまるごと濃い虹彩で、しかもインクと虹彩の明度差は実測で
+  //   1.2〜1.8:1（1.0 で同色）しかない。ここへ 0.3ry も沈めると、
+  //   沈めた部分は **色が同じで完全に見えなくなる**。
+  //   結果、地肌の上へはみ出した細い毛だけが残り、
+  //   「目から離れて浮いた数本の毛」に見えていた（実個体 `QHJS-K7MY`
+  //   `S6AG-YGBX` `7QL5-ARVD`。いずれも たまご ＋ 濃い配色）。
+  //
+  //   白目が無い目では、輪郭リングに重なるぶんだけ沈めれば十分。
+  //   まつげ本体は器の上（地肌の上＝コントラスト 4〜6.7:1）に載るので、
+  //   原画の形がそのまま読める。
+  //   `sleepy` のように負の `sink`（インクへ引き上げる）はそのまま通す。
+  const hasSclera = !isTallSolidEye(shapeId) && !isSolidEye(ctx.parts);
+  const sinkDepth = hasSclera
+    ? place.sink * ry
+    : Math.min(place.sink * ry, ctx.strokeW * 0.35);
+
+  /** ある倍率でまつげ 1 枚を組み立てる（`lashRoom` を越えていないか試すため）。 */
+  const buildAt = (s: number): { d: string; probes: Vec[] } => {
+    const startX = spanC - (place.outerAt * inkW * s) / 2;
+    const tx = startX - sprite.box.x0 * s;
+    const edge = slopeLimited(baseAt, startX, rightOf(s), anchorX, LASH_MAX_SLOPE);
+    const uOf = (x: number): number => (x - tx) / s / inkW - sprite.box.x0 / inkW;
+    const uA = uOf(anchorX);
+    const edgeA = edge(anchorX);
+    const arcA = arc(uA);
+    const bendAt = (x: number): number => edge(x) - edgeA - (arc(uOf(x)) - arcA) * s;
+    // 原画の縁（上まつげなら下辺）が、基準線より `sink` だけ内側へ食い込む
+    // ように縦位置を決める。0 でちょうど接し、正の値でまぶたのインクと
+    // ひとつながりの塊になる。
+    const ty = edgeA + sinkDir * sinkDepth - arcA * s;
+    const w = warpSpritePath(sprite.body, tx, ty, s, bendAt);
+    // 左右反転を適用した「実際に絵がある位置」にしてから返す。
+    return {
+      d: w.d,
+      probes: mirror === 1 ? w.probes : w.probes.map((q) => ({ x: -q.x, y: q.y })),
+    };
+  };
+
+  // ── 体の輪郭からはみ出さないところまで縮める ────────────────
+  //
+  // 【`lashRoom` だけでは足りない — レビュー C で実測して分かった】
+  //   `lashRoom` は目の高さ ±0.7ry の 3 点でしか横幅を見ていない。まつげは
+  //   目の **上** へ大きく伸びるので、頭が細くなる高さでの余白を見落とす。
+  //   実測で成体 300 体中 31 体、まつげが体の輪郭を突き抜けていた
+  //   （顔は体でクリップされるので、はみ出した先は **平らに切り落とされる**）。
+  //
+  //   `ctx.shape.outsideAt` は `inspectModel` とまったく同じ折れ線で判定する
+  //   ので、ここを通れば自動検査も必ず通る。収まるまで原画の形を保ったまま
+  //   少しずつ縮める。
+  const angle = rad(tiltDeg);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  //
+  // 【左右を必ず同じだけ縮める】
+  //   体の輪郭は左右対称ではない（`silhouette` の癖・裾の割れなど）。片目ずつ
+  //   判定すると、**片方のまつげだけが縮んで** 左右で大きさが変わる
+  //   （実測 43.5 と 48.2 ＝ 11% 差。顔の上では作画ミスに見える）。
+  //   顔の中心線で折り返した点も一緒に見て、どちらの側でも収まる大きさにする。
+  //   こうすると両目がまったく同じ倍率になる。
+  // 折り返しの軸は **顔の中心**（目を並べた基準）。体の中心 `shape.cx` を使うと
+  // 両者が 0.26 ずれていて、境界ぎりぎりの個体で左右の縮小量が変わった
+  // （実測 `wide` × `sideLong` で 3.0 のずれ）。
+  const faceCx = ctx.face.cx;
+  const worstOutside = (pts: readonly Vec[]): number => {
+    let worst = 0;
+    for (const q of pts) {
+      const gx = slot.x + q.x * cos - q.y * sin;
+      const gy = slot.y + q.x * sin + q.y * cos;
+      const d = Math.max(ctx.shape.outsideAt(gx, gy), ctx.shape.outsideAt(2 * faceCx - gx, gy));
+      if (d > worst) worst = d;
     }
-    return clean;
+    return worst;
+  };
+  let built = buildAt(scale);
+  for (let i = 0; i < 12 && worstOutside(built.probes) > 1; i++) {
+    scale *= 0.9;
+    if (inkW * scale < 2) return NO_LASH;
+    built = buildAt(scale);
   }
 
-  let g = '';
-  for (const [angDeg, fanLenK] of fanForStyle) {
-    const rad = (angDeg * Math.PI) / 180;
-    const len = baseLen * fanLenK;
-    const ex = lx + mirror * Math.sin(rad) * len;
-    const ey = ly + (lower ? 1 : -1) * Math.cos(rad) * len;
-    g += path(`M${n(lx)} ${n(ly)}L${n(ex)} ${n(ey)}`, {
-      stroke: ctx.colors.inkPaint,
-      width: ctx.strokeThin * (style === 'upper' ? 1.45 : style === 'sleepy' ? 1.15 : 1.3),
-      linecap: 'round',
+  // 左右反転は目の中心（x=0）まわり。原画は「外向きに跳ねる」向きで描かれて
+  // いるので、mirror を掛けるだけで両目とも跳ねが外を向く。
+  //
+  // 【白いつやの点を描かなくなった理由 — レビュー A-1 / A-4】
+  //   原画には、まつげの太いところに白いつやの点が乗っている。原画の
+  //   サイズ（幅 900px）では意匠として効くが、ゲームでの実寸は幅 30px 前後で
+  //   点は 1px 未満になり、96px の一覧では **そもそも見えない**（実測で
+  //   full と lite に差が出なかった）。一方で拡大表示では、黒いまつげの
+  //   シルエットの中にある白い点が **動物の目** に読めてしまい、みかづき／
+  //   したりめでは「目の上を魚が泳いでいる」絵になっていた。点目
+  //   （`bead`）では、目そのものが持つハイライトに加えて **2 つめの
+  //   ハイライト** が浮き、傷か汚れに見えた。
+  //   小さいと見えず、大きいと害になるので描かない。
+  //   原画（`art/eyelashes_sprite.svg`）と `lashSprites.ts` の
+  //   `highlight` はそのまま残してあるので、戻したくなったらここで
+  //   描くだけでよい。
+  let svg = mirror === 1 ? '' : `<g transform="scale(-1 1)">`;
+  // パスは反転前の座標で書いてあるので、反転はグループの transform に任せる。
+  //
+  // 【白目の無い目にだけ細い縁を付ける理由 — レビュー第2ラウンド】
+  //   たまご（べた目）・つぶら（点目）は器の中がまるごと濃い虹彩で、
+  //   インクとの明度差が 1.2〜1.8:1 しかない。まつげのうち器に重なった部分は
+  //   **輪郭が読めず**、原画の帯が消えて細い毛だけが残る。
+  //   地肌の色で細く縁取ると、器の上では明るい隙間として帯の形が浮かび、
+  //   地肌の上では同色なので何も足されない（＝白目のある目と同じ絵のまま）。
+  // 【細い縁を付けない — 製品オーナーの指示（NTD6-GKM7）】
+  //   白目の無い目（べた目・点目）では、まつげがインクと同色の虹彩に溶けて
+  //   形が読めなくなる。いったん地肌寄りの細い縁を付けて輪郭を出したが、
+  //   「まつ毛の縁の色いらない。全部黒色でいい。」との判断で外した。
+  //   読みやすさは、縁ではなく **置きかた**（`lashBaseY` が べた目では
+  //   外周リングを基準にする／`sinkDepth` が浅い）で確保している。
+  svg += path(built.d, { fill: ctx.colors.inkPaint });
+  if (mirror !== 1) svg += `</g>`;
+  return { svg, probes: built.probes };
+}
+
+/**
+ * 原画のパス（`M x y l dx dy … Z` だけでできている）を、
+ * 拡大・平行移動し、さらに `bendAt(x)` ぶん縦にずらして書き直す。
+ *
+ * 変換行列では「曲線に沿ってしならせる」が表せないので、点ごとに計算する。
+ * 原画は間引き済み（1 枚 100〜300 点）なので、目 1 つあたりの計算量は小さい。
+ *
+ * 出力は相対コマンド（`l`）にする。絶対座標を並べるより 2 割ほど短く、
+ * 一覧（1 画面に 100 体）での DOM の重さに効く。
+ */
+function warpSpritePath(
+  d: string,
+  tx: number,
+  ty: number,
+  scale: number,
+  bendAt: (localX: number) => number,
+): { d: string; probes: Vec[] } {
+  let out = '';
+  // 検査用の点は輪郭から間引いて拾う。全点を渡すと 1 個体あたり数百点になり、
+  // `inspectModel` の点 × シルエット辺の総当たりが重くなる。
+  const probes: Vec[] = [];
+  let seen = 0;
+  for (const poly of parseSpritePath(d)) {
+    let px = 0;
+    let py = 0;
+    poly.forEach((p, i) => {
+      const x = tx + p.x * scale;
+      const y = ty + p.y * scale + bendAt(x);
+      if (seen++ % 3 === 0) probes.push({ x, y });
+      out += i === 0 ? `M${n(x)} ${n(y)}` : `l${n(x - px)} ${n(y - py)}`;
+      px = x;
+      py = y;
     });
+    out += 'Z';
   }
-  return g;
+  // "12 -3" → "12-3"。区切りの空白は負号があれば省ける。
+  return { d: out.replace(/ -/g, '-'), probes };
+}
+
+/** 原画パスの点列。同じ原画を何度も解析しないよう覚えておく。 */
+const spritePathCache = new Map<string, Vec[][]>();
+
+function parseSpritePath(d: string): Vec[][] {
+  const hit = spritePathCache.get(d);
+  if (hit) return hit;
+  const polys: Vec[][] = [];
+  let cur: Vec[] = [];
+  let x = 0;
+  let y = 0;
+  // `M`/`l`/`Z` と、その後ろに続く数値の並び。数値は空白か符号で区切られる。
+  for (const m of d.matchAll(/([MlZ])([^MlZ]*)/g)) {
+    const cmd = m[1];
+    const nums = (m[2]!.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+    if (cmd === 'M') {
+      if (cur.length > 2) polys.push(cur);
+      cur = [];
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        x = nums[i]!;
+        y = nums[i + 1]!;
+        cur.push({ x, y });
+      }
+    } else if (cmd === 'l') {
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        x += nums[i]!;
+        y += nums[i + 1]!;
+        cur.push({ x, y });
+      }
+    } else {
+      if (cur.length > 2) polys.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length > 2) polys.push(cur);
+  spritePathCache.set(d, polys);
+  return polys;
 }
 
 /** 目 1 つ分の SVG。 */
-function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
+/**
+ * 目 1 つ分。**まつげは別パーツとして返す**（`lashSvg`）。
+ *
+ * 【なぜ目と分けるのか — Visual Lab のドラッグ機能のため】
+ *   製品オーナーが「まつげをクリックして動かす」で意図を伝えられるように、
+ *   まつげは目とは独立して掴めるパーツでなければならない。同じ `<g>` の中に
+ *   描いていると、クリックしても目ごと動いてしまう。
+ *   描画結果（重なり順・クリップ）は分ける前とまったく同じ。
+ */
+function drawEye(
+  ctx: DrawCtx,
+  slot: EyeSlot,
+  index: number,
+): { svg: string; lashSvg: string; probes: readonly Vec[] } {
+  // まつげの検査用の点。早期リターンが 4 か所あるので、`lashes()` を通した
+  // 時点でここへ控えておき、最後にまとめて返す。目のグループは回転して
+  // いるので、ここで親の座標系へ直してから渡す。
+  let probes: readonly Vec[] = [];
+  const lashes = (sh: string, style: EyeStyle, room: number): string => {
+    const tilt = dir * style.tilt + asymTilt;
+    const out = drawLashes(ctx, slot, sh, style, room, tilt);
+    probes = rotatePointsAt(out.probes, slot.x, slot.y, tilt);
+    return out.svg;
+  };
   const c = ctx.colors;
   const { s, rx, ry, dir } = slot;
   const shapeId = ctx.parts.eyeShape;
@@ -1002,7 +1530,11 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
     return Math.max(0, room - rx * 0.88 - ctx.strokeW);
   })();
 
-  let g = `<g transform="translate(${n(slot.x)} ${n(slot.y)}) rotate(${n(dir * st.tilt + asymTilt)})">`;
+  // まつげを別パーツにしても同じ位置へ置けるよう、変換を 1 か所で作る。
+  const tf = `<g transform="translate(${n(slot.x)} ${n(slot.y)}) rotate(${n(dir * st.tilt + asymTilt)})">`;
+  // まつげは目とは別の `<g>` に出す（ローカル座標のまま溜めておく）。
+  let lashInner = '';
+  let g = tf;
 
   // ── みかづき（閉じた笑い目）は白目を持たない ──────────────
   if (shapeId === 'crescent') {
@@ -1025,9 +1557,9 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
         opacity: 0.9,
       });
     }
-    g += drawLashes(ctx, slot, shapeId, st, lashRoom);
+    lashInner = lashes(shapeId, st, lashRoom);
     g += `</g>`;
-    return g;
+    return { svg: g, lashSvg: lashInner ? `${tf}${lashInner}</g>` : '', probes };
   }
 
   // ── したりめ（傾いた閉じ目＋切り欠き）も白目を持たない ──────
@@ -1083,9 +1615,9 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
         opacity: 0.9,
       });
     }
-    g += drawLashes(ctx, slot, shapeId, st, lashRoom);
+    lashInner = lashes(shapeId, st, lashRoom);
     g += `</g>`;
-    return g;
+    return { svg: g, lashSvg: lashInner ? `${tf}${lashInner}</g>` : '', probes };
   }
 
   // ── 点目（白目を持たない一色の目）──────────────────────
@@ -1106,13 +1638,12 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
   //
   // 【ほしぞらだけ外す理由】
   //   『ほしぞら』は虹彩が夜空・瞳が星形という、めずらしさの表示そのもの。
-  //   点目にするとその形質が画面から消えてしまうので、星のほうを残す
-  //   （`starSpikes` が bead を 8 本の星として受け取る作りも既にある）。
+  //   点目にするとその形質が画面から消えてしまうので、星のほうを残す。
   if (isSolidEye(ctx.parts) && shapeId !== 'starry') {
     g += drawSolidEye(ctx, slot, shapeId, iris, index);
-    g += drawLashes(ctx, slot, shapeId, st, lashRoom);
+    lashInner = lashes(shapeId, st, lashRoom);
     g += `</g>`;
-    return g;
+    return { svg: g, lashSvg: lashInner ? `${tf}${lashInner}</g>` : '', probes };
   }
 
   const wd = whiteShape(shapeId, rx, ry);
@@ -1191,8 +1722,9 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
         opacity: 0.9,
       });
     }
-    const spikes = starSpikes(ctx.parts.pupil);
-    g += path(roundedStarPath(0, py, ir * 0.66, ir * 0.3, spikes, -90), {
+    // 星型を遺伝子に応じて3角形へ戻すと、「三角形はやめて」という
+    // ほしぞら自体の造形ルールを破る。どの意匠との組合せでも丸い4弁に統一する。
+    g += path(roundedStarPath(0, py, ir * 0.62, ir * 0.34, 4, -90), {
       // 星空の星は虹彩色ではなく、黒いシルエットとして読ませる。
       fill: mix(c.ink, '#000000', 0.48),
     });
@@ -1343,10 +1875,10 @@ function drawEye(ctx: DrawCtx, slot: EyeSlot, index: number): string {
   }
 
   // 付け根は固定値ではなく、上まぶたの実際の下辺／白目の輪郭から求める。
-  g += drawLashes(ctx, slot, shapeId, st, lashRoom);
+  lashInner = lashes(shapeId, st, lashRoom);
 
   g += `</g>`;
-  return g;
+  return { svg: g, lashSvg: lashInner ? `${tf}${lashInner}</g>` : '', probes };
 }
 
 /**
@@ -1809,14 +2341,35 @@ export function buildFace(ctx: DrawCtx): PartOut[] {
   if (cheekSvg) out.push({ id: 'cheeks', z: Z.FACE - 1, svg: inBody(cheekSvg), bbox: cheekBox });
 
   face.eyes.forEach((slot, i) => {
+    const eye = drawEye(ctx, slot, i);
     out.push({
       id: `eye${i}`,
       z: Z.FACE,
-      svg: inBody(drawEye(ctx, slot, i)),
+      svg: inBody(eye.svg),
       anchor: { id: `eye${i}`, x: slot.x, y: slot.y, angle: 0, scale: slot.s / 16 },
-      // 白目の実寸を bbox にする（重なり検査の基準）
+      // bbox は白目の実寸のまま（目どうしの重なり検査の基準なので、
+      // まつげを足すと「重なり」の意味そのものが変わってしまう）。
       bbox: boxAround(slot.x, slot.y, slot.rx, slot.ry),
     });
+    // まつげは別パーツ。目のすぐ後ろに積むので、z が同じでも配列順で
+    // 目の上に描かれる（`model.ts` の並べ替えは安定ソート）。
+    if (eye.lashSvg) {
+      out.push({
+        id: `lash${i}`,
+        z: Z.FACE,
+        svg: inBody(eye.lashSvg),
+        // まつげは矩形ではなく **輪郭上の点** で検査する。
+        //
+        // 【レビュー C の修正】
+        //   以前はまつげがどの検査にも入っておらず、したりめ＋`long` が
+        //   宣言 bbox より 11.1 上（目の高さ 12.5）まで描かれていても
+        //   `face-outside-body` は 0 件だった。かといって bbox に足すと
+        //   矩形の角という **絵の無い場所** を検査してしまい、成体 300 体中
+        //   43 件の誤検出が出た（実測）。点で渡すのが正解。
+        bbox: boxOfPoints(eye.probes),
+        probes: eye.probes,
+      });
+    }
   });
 
   const mouthSvg = drawMouth(ctx);

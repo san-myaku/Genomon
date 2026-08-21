@@ -44,6 +44,22 @@ npm run dev        # http://localhost:5183 （既存セッションでは 5291 �
 新しい乱数を足すときは、上のどれかに明確に該当する場合以外は seed 由来の
 サブストリームを使うこと。
 
+### 1.5. `src/render/parts/lashSprites.ts` は生成物。手で編集しない
+
+まつげは製品オーナーが描いた原画（`art/eyelashes_sprite.svg`）をそのまま
+素材として使っている。`lashSprites.ts` はそれを軽量化して焼き込んだ
+**生成ファイル**なので、直接書き換えても次の生成で消える。
+
+```bash
+node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/lashSprites.ts
+```
+
+まつげの見た目を変えたいときは、
+- **形そのもの** を変える → 原画 `art/eyelashes_sprite.svg` を差し替えて再生成する
+- **置きかた**（大きさ・位置）を変える → `src/render/parts/face.ts` の `LASH_PLACEMENT`
+
+設計の経緯は [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) の D-031 と **D-032**。
+
 ### 2. `src/genetics/loci.ts` の対立遺伝子 ID を絶対に削除しない
 
 セーブデータは `Genotype`（seed と対立遺伝子 ID のペア）だけを保存し、
@@ -128,6 +144,16 @@ SVG を目で見て確認する。** テストが green でも「合成された
   しない。** 部分的に直しただけで resolved を立てると、残りの issue が
   見過ごされる。ノート欄に `※〜は対応済み` と追記するのはよいが、
   resolved フラグは最後の 1 つが終わってから立てる。
+- **Visual Lab 指摘を「解決済み」にする前に、テスト成功や実装者自身の文章を
+  根拠にしてはならない。** リードは必ず対象seedを大きく実表示して画像を自分で
+  確認する。対立遺伝子カタログを変更した後は seed だけでは以前と同じ表現型を
+  再構成できない場合があるため、さらに `sheet.html?force=<locus>:<allele>` で
+  指摘された形質と競合する組合せを強制表示し、禁止された見え方（重なり、太線、
+  三角形、色切れ等）が残っていないことを確認する。**自動検査0件は、この目視確認の
+  代わりにならない。**
+- 指摘に「〜はやめて」「〜を削除」「太すぎる」のような否定条件がある場合は、
+  修正後にもその見え方へ戻る分岐・線の重ね描き・別の組合せを残さない。個別seedの
+  例外で隠さず、同じ描画規則を使う全個体へ効くルールとして直す。
 - Visual Lab を開くたびに `syncAndReport()` が自動でこのファイルを
   pull → merge → push する（`mergeSeeds()` はレコードごとに `updatedAt` の
   新しい方を採用）。エージェントがファイルを直接編集するだけで、

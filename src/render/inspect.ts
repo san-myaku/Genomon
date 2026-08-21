@@ -65,7 +65,7 @@ const ATTACHED_IDS = new Set([
 ]);
 
 /** 体の内側に完全に収まっていなければならないパーツ（顔）。 */
-const INSIDE_IDS = /^(eye\d+|mouth|cheeks)$/;
+const INSIDE_IDS = /^(eye\d+|lash\d+|mouth|cheeks)$/;
 
 /**
  * 背面（z < BODY）に描かれるパーツのうち、体マスクを通していないと
@@ -87,6 +87,9 @@ const EGG_FORBIDDEN = new Set([
   'eye0',
   'eye1',
   'eye2',
+  'lash0',
+  'lash1',
+  'lash2',
   'mouth',
   'cheeks',
 ]);
@@ -179,7 +182,13 @@ export function inspectModel(model: RenderModel): InspectResult {
     if (!p.bbox || !INSIDE_IDS.test(p.id)) continue;
     if (hasPoly) {
       let worst = 0;
-      for (const q of boxProbes(p.bbox)) worst = Math.max(worst, outsideDepth(q.x, q.y, poly));
+      // 【`probes` があるパーツは矩形を見ない】
+      //   まつげのように斜めに伸びる絵は、bbox の **角が空白** になる。
+      //   そこを検査すると、絵が体の中に収まっていても不良として出る
+      //   （実測で成体 300 体中 43 件の誤検出）。輪郭上の点を宣言している
+      //   パーツは、その点だけを見るのが正しい。
+      const pts = p.probes?.length ? p.probes : boxProbes(p.bbox);
+      for (const q of pts) worst = Math.max(worst, outsideDepth(q.x, q.y, poly));
       if (worst > 2) issues.push(`face-outside-body:${p.id}(${worst.toFixed(1)})`);
     } else {
       const grown: Box = {

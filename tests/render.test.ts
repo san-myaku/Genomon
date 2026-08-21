@@ -126,7 +126,7 @@ describe('参考画像から追加した付属物', () => {
       ['mouth', ['bowl']],
       ['ears', ['catEar', 'bearEar', 'gill']],
       ['horns', ['nubHorn', 'coneHorn', 'curlHorn', 'goatHorn', 'ramHorn', 'coralHorn']],
-      ['lashes', ['mid', 'long', 'sideLong', 'upper', 'lower', 'sleepy']],
+      ['lashes', ['mid', 'long', 'sideLong', 'upper', 'lower', 'sleepy', 'droopy']],
       ['tail', ['fluff']],
     ];
     for (const [locus, ids] of cases) {

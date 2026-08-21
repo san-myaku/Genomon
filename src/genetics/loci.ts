@@ -171,6 +171,11 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
       { id: 'upper',    label: '上まつ毛み', dominance: 3, weight: 3 },
       { id: 'lower',    label: '下まつ毛み', dominance: 3, weight: 3 },
       { id: 'sleepy',   label: 'おねむまつ毛', dominance: 3, weight: 7 },
+      // 【2026-08-15 追加】まつげの原画（`art/eyelashes_sprite.svg`）には
+      //   8 種が入っていて、7 種は上の対立遺伝子と 1 対 1 で対応していたが
+      //   `07_droopy` だけ受け皿が無かった。製品オーナーの判断で採用。
+      //   これで「まつげを持つ個体」の割合は 34% → 36.5% に少し上がる。
+      { id: 'droopy',   label: 'たれまつげ', dominance: 3, weight: 4 },
     ],
   },
   {

@@ -209,6 +209,7 @@ export function buildRenderModel(
     svg: p.svg,
     ...(p.anchor ? { anchor: p.anchor } : {}),
     ...(p.bbox ? { bbox: p.bbox } : {}),
+    ...(p.probes?.length ? { probes: p.probes } : {}),
   }));
 
   const anchors: Anchor[] = renderParts

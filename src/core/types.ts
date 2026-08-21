@@ -366,6 +366,14 @@ export interface RenderPart {
   anchor?: Anchor;
   /** 概算バウンディングボックス（はみ出し検査用）。 */
   bbox?: { x: number; y: number; w: number; h: number };
+  /**
+   * はみ出し検査に使う **実際の輪郭上の点**（任意）。
+   *
+   * 矩形では表せない絵（まつげ）のためのもの。bbox を膨らませると
+   * 矩形の角＝絵の無い場所まで検査してしまうので、点で持たせる。
+   * 詳しくは `render/ctx.ts` の `PartOut.probes`。
+   */
+  probes?: readonly { x: number; y: number }[];
 }
 
 export interface RenderModel {

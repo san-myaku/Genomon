@@ -12,7 +12,7 @@
 
 import type { LifeState, Phenotype, PartExpression, RenderDetail } from '../core/types.ts';
 import { Rng, clamp } from '../core/rng.ts';
-import type { Box } from './svg.ts';
+import type { Box, Vec } from './svg.ts';
 import { Defs } from './svg.ts';
 import type { BodyShape } from './geom.ts';
 import type { RenderColors } from './palette.ts';
@@ -96,6 +96,17 @@ export interface PartOut {
   svg: string;
   anchor?: { id: string; x: number; y: number; angle: number; scale: number };
   bbox?: Box;
+  /**
+   * 体の内側に収まっているかを検査するための **実際の輪郭上の点**（任意）。
+   *
+   * 【bbox を膨らませるのではなく点で渡す理由】
+   *   `inspectModel` のはみ出し検査は bbox の周囲 8 点を見る。これは
+   *   「矩形がほぼインクで埋まっている」パーツでは妥当だが、まつげのように
+   *   斜めに伸びるものを bbox に足すと、**矩形の角は空白なのにそこを
+   *   検査してしまう**（実測で成体 300 体中 43 件の誤検出が出た）。
+   *   絵が実際にある位置だけを渡せば、誤検出なしにはみ出しを捕まえられる。
+   */
+  probes?: readonly Vec[];
 }
 
 export interface DrawCtx {
