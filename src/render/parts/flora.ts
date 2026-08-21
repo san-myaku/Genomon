@@ -151,17 +151,38 @@ export function buildPlant(ctx: DrawCtx): PartOut[] {
   const H = s.botY - s.topY;
   const rng = ctx.rng('plant');
   const k = decorScale(ctx);
-  const ox = ctx.pheno.asymmetry * rng.float(-7, 7);
   const topCrowded = ctx.parts.antennae !== 'none' || ctx.parts.horns !== 'none';
+  // 左右の揺らぎ。乱数は常に引く（引く／引かないを分岐させると、
+  // 同じ seed でも後続の乱数がずれて決定論が崩れる）。
+  //
+  // 【頭頂が混んでいるときは揺らさない — 自動検査 `decor-same-root` が拾った】
+  //   中央に置くと決めたのに、非対称性による最大 ±7 のずれで角・触角の根元へ
+  //   寄る個体があった（実測 3000 体中 36 体、どれも根元の距離 7.0〜7.7）。
+  //   `SCAN-409` `SCAN-416` では葉とサンゴ角が混ざって塊になっていた。
+  //   中央を空けておくという判断を、揺らぎで台無しにしない。
+  const oxRaw = ctx.pheno.asymmetry * rng.float(-7, 7);
+  const ox = topCrowded ? 0 : oxRaw;
   const veryCrowded = ctx.parts.antennae !== 'none' && ctx.parts.horns !== 'none';
-  // 頭頂に角・触角があるときは、芽を中央へ重ねず、少し下げて横へ逃がす。
-  // side は表現型から決めるので、同じ seed では毎回同じ位置になる。
-  const side = ctx.pheno.asymmetry >= 0.5 ? -1 : 1;
-  const crowdedY = veryCrowded ? 0.22 : 0.14;
-  const crowdedSide = veryCrowded ? 0.66 : 0.5;
-  const crowdedScale = veryCrowded ? 0.82 : 0.9;
-  const ax = s.cx + ox + (topCrowded ? side * s.halfAt(s.topY + H * crowdedY) * crowdedSide : 0);
-  const ay = s.topY + H * (topCrowded ? crowdedY : 0.02) + 2;
+  // 触角・角・植物を頭頂に同時に載せると、それぞれの形が読めず
+  // 「部品を足しただけ」のシルエットになる。三者がそろう組み合わせでは
+  // 植物を休ませ、耳・角・触角の輪郭を優先する。遺伝子や表現型は保持され、
+  // 他の組み合わせでは通常どおり植物として現れる。
+  if (veryCrowded) return [];
+  // 【頭頂が混んでいても、芽は中央に置く — 指摘 5 件で判明】
+  //   以前は「混んでいたら横へ逃がす」（`halfAt` の 50%）としていた。
+  //   ところが頭頂を占める相手は、どちらも同じ帯にいる:
+  //     角   … `halfAt` の 52%（`ears.ts` の `axFactor`）
+  //     触角 … `halfAt` の 50%（同上）
+  //   つまり **逃がした先が、逃げる相手そのもの** だった。実測:
+  //     `RJ3P-9UAN` 植物 22.3 / 角 23.1、`MLA9-UEJW` 15.4 / 16.0、
+  //     `LD9V-5F8V` 17.3 / 18.0、`AE68-XH52` 31.2 / 触角 31.2、
+  //     `HB8C-QAKE` 30.8 / 触角 30.8
+  //   製品オーナーは 5 個体すべてを手で **中央（x ≒ 0）** へ戻していた。
+  //   角も触角も左右対に立つので中央は必ず空いている。素直に中央へ置く。
+  //   （角と触角が **両方** ある個体は `veryCrowded` で植物を休ませてある。）
+  const crowdedScale = 0.9;
+  const ax = s.cx + ox;
+  const ay = s.topY + H * 0.02 + 2;
 
   // 付け根は「体に落ちる短い影」だけ。閉じた図形は置かない。
   const shade = rootShade(ctx, ax, ay + 1, 11 * k, ox > 0 ? 0.4 : -0.4);
@@ -226,6 +247,8 @@ export function buildPlant(ctx: DrawCtx): PartOut[] {
       // （中に入れるとクリップのパスまで一緒に縮んでしまう）。
       svg: shade + fitted.svg,
       anchor: { id: 'plant', x: ax, y: ay, angle: 0, scale: k },
+      // 生えている点。装飾どうしが同じ場所から生えていないかの検査に使う。
+      roots: [{ x: ax, y: ay }],
       bbox: fitted.bbox,
     },
   ];

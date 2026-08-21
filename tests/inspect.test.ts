@@ -128,3 +128,49 @@ describe('inspectModel が正常な個体を誤検出しないこと', () => {
     }
   });
 });
+
+describe('頭頂の装飾が同じ列から生えていないか', () => {
+  /** 根元だけを持つ最小のモデルを組む。 */
+  const withRoots = (plantX: number, hornDx: number): RenderModel => {
+    const m = healthyModel();
+    const parts: RenderPart[] = [
+      ...m.parts.filter((p) => p.id !== 'plant' && p.id !== 'horns' && p.id !== 'antennae'),
+      { id: 'plant', z: 68, svg: '<g/>', roots: [{ x: plantX, y: 40 }] },
+      {
+        id: 'horns',
+        z: 70,
+        svg: '<g/>',
+        // 角は左右 2 本。片方だけが植物とぶつかる状況を作る。
+        roots: [{ x: 100 - hornDx, y: 30 }, { x: 100 + hornDx, y: 30 }],
+      },
+    ];
+    return { ...m, parts };
+  };
+  const hits = (mm: RenderModel): string[] =>
+    inspectModel(mm).issues.filter((x) => x.startsWith('decor-same-root'));
+
+  it('同じ列から生えていれば不良として出る', () => {
+    // 実際に起きていた不良（植物 22.3 / 角 23.1 ＝ 0.8 しか離れていない）
+    expect(hits(withRoots(122.3, 23.1))).not.toEqual([]);
+  });
+
+  it('離れていれば出ない', () => {
+    expect(hits(withRoots(100, 23.1))).toEqual([]);
+  });
+
+  it('縦にずれていても、同じ列なら見逃さない', () => {
+    // 【この検査がいちばん大事】
+    //   最初の版は根元どうしのユークリッド距離で見ていた。不良を出していた
+    //   旧実装は植物を横へ逃がすと同時に下へ 15 ほどずらしていたため、横が
+    //   0.8 しか離れていなくても距離は 15 を超え、**検出 0 件** になった。
+    //   縦のずれで見逃さないことを固定する。
+    const m = withRoots(122.3, 23.1);
+    const moved = {
+      ...m,
+      parts: m.parts.map((p) =>
+        p.id === 'plant' ? { ...p, roots: [{ x: 122.3, y: 40 + 15 }] } : p,
+      ),
+    };
+    expect(hits(moved)).not.toEqual([]);
+  });
+});

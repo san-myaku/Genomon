@@ -1408,6 +1408,7 @@ export function buildAntennae(ctx: DrawCtx): PartOut[] {
       : normalK;
   let svg = '';
   let bbox: Box | undefined;
+  const rootPts: Vec[] = [];
 
   // `both` のときだけ、軸の長い触角の縮尺をさらに絞る
   // （`ANT_BOTH_SCALE` のコメントを参照）。単独発現では 1 なので無効。
@@ -1424,8 +1425,11 @@ export function buildAntennae(ctx: DrawCtx): PartOut[] {
     shade += rootShade(ctx, ax, ay, 6 * k, side * 0.5, 0.8);
     svg += p.svg;
     bbox = boxUnion(bbox, p.bbox);
+    // 左右それぞれの根元を控える（装飾どうしの重なり検査に使う）。
+    rootPts.push({ x: ax, y: ay });
   }
-  const fitted = shrinkToFit(svg, bbox, s.cx, s.topY + H * 0.3, VIEW, 2);
+  const fitCy = s.topY + H * 0.3;
+  const fitted = shrinkToFit(svg, bbox, s.cx, fitCy, VIEW, 2);
   return [
     {
       id: 'antennae',
@@ -1433,6 +1437,7 @@ export function buildAntennae(ctx: DrawCtx): PartOut[] {
       svg: shade + fitted.svg,
       anchor: { id: 'antennae', x: s.cx, y: ay, angle: 0, scale: k },
       bbox: fitted.bbox,
+      roots: rootPts,
     },
   ];
 }
@@ -1796,11 +1801,21 @@ export function buildHorns(ctx: DrawCtx): PartOut[] {
             : 0.055;
   const ay = s.topY + H * hornYFactor;
   const axFactor = both ? 0.72 : 0.52;
-  const hornAxFactor = kind === 'goatHorn' ? (both ? 0.76 : 0.62) : axFactor;
+  // サンゴ角は「枝分かれした平たい扇」なので、他の角と同じ付け根の間隔だと
+  // 左右の扇が中央でぶつかり、2 本ではなく 1 つの塊に見える（製品オーナー
+  // 指摘「サンゴ角、もうちょっとつの同士を離したほうがいい」`V8PM-2V59`）。
+  // ヤギ角と同じ扱いで、付け根だけ外へ広げる。
+  const hornAxFactor =
+    kind === 'goatHorn'
+      ? both ? 0.76 : 0.62
+      : kind === 'coralHorn'
+        ? both ? 0.78 : 0.66
+        : axFactor;
   const rng = ctx.rng('horns');
   const k = clamp(0.85 + ctx.pheno.size * 0.22 + ctx.pheno.decorAmount * 0.12, 0.82, 1.2);
   let svg = '';
   let bbox: Box | undefined;
+  const rootPts: Vec[] = [];
 
   // 付け根の影。以前ここに置いていた「本体色の明るい円」は
   // 全個体で同形・同明度になり「ネジ穴」に見えていたので廃止した。
@@ -1817,8 +1832,11 @@ export function buildHorns(ctx: DrawCtx): PartOut[] {
     shade += rootShade(ctx, ax, ay, 8 * k, side * 0.6);
     svg += p.svg;
     bbox = boxUnion(bbox, p.bbox);
+    // 左右それぞれの根元を控える（装飾どうしの重なり検査に使う）。
+    rootPts.push({ x: ax, y: ay });
   }
-  const fitted = shrinkToFit(svg, bbox, s.cx, s.topY + H * 0.35, VIEW, 2);
+  const fitCy = s.topY + H * 0.35;
+  const fitted = shrinkToFit(svg, bbox, s.cx, fitCy, VIEW, 2);
   return [
     {
       id: 'horns',
@@ -1826,6 +1844,7 @@ export function buildHorns(ctx: DrawCtx): PartOut[] {
       svg: shade + fitted.svg,
       anchor: { id: 'horns', x: s.cx, y: ay, angle: 0, scale: k },
       bbox: fitted.bbox,
+      roots: rootPts,
     },
   ];
 }

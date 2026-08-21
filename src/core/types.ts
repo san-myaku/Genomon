@@ -374,6 +374,12 @@ export interface RenderPart {
    * 詳しくは `render/ctx.ts` の `PartOut.probes`。
    */
   probes?: readonly { x: number; y: number }[];
+  /**
+   * この器官が体から生えている点（左右 2 本なら 2 つ）。
+   * 装飾どうしが同じ場所から生えていないかの検査に使う。
+   * 詳しくは `render/ctx.ts` の `PartOut.roots`。
+   */
+  roots?: readonly { x: number; y: number }[];
 }
 
 export interface RenderModel {

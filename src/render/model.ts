@@ -210,6 +210,7 @@ export function buildRenderModel(
     ...(p.anchor ? { anchor: p.anchor } : {}),
     ...(p.bbox ? { bbox: p.bbox } : {}),
     ...(p.probes?.length ? { probes: p.probes } : {}),
+    ...(p.roots?.length ? { roots: p.roots } : {}),
   }));
 
   const anchors: Anchor[] = renderParts
