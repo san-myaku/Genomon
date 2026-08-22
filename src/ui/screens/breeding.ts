@@ -33,9 +33,19 @@ import {
 export function screenBreeding(app: App, host: HTMLElement): Screen {
   let aId: string | null = null;
   let bId: string | null = null;
+  /** 直近に生まれた卵（生まれた卵を画面に出すため）。 */
   let bornEggId: string | null = null;
+  /** 直前の操作で交配が成功したか（成功をはっきり見せるため）。 */
   let justBred = false;
+  /** 成功直後に生まれた卵まで自動スクロールする、の 1 回きりフラグ。 */
   let scrollToBorn = false;
+  /**
+   * 成功カードを見せているあいだ「次の目標」を据え置くための解除関数。
+   *
+   * 交配すると両親の機嫌が下がるので、放っておくと成功した次の瞬間に
+   * 目標行が「交配の じゅんび: ○○ の 機嫌が たりません（59 / 60）」へ変わる。
+   * せっかくの成功が、失敗しているように見える文で一瞬にして塗りつぶされる。
+   */
   let releaseObjective: (() => void) | null = null;
   let objectiveTimer = 0;
 
@@ -47,12 +57,14 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
     fn?.();
   }
 
+  /** 成功の余韻のあいだだけ目標行を止める（自動で戻す）。 */
   function holdObjectiveFor(ms: number): void {
     resumeObjective();
     releaseObjective = app.holdObjective();
     objectiveTimer = window.setTimeout(() => resumeObjective(), ms);
   }
 
+  /** 親カードの主な特徴（3 つまで）。 */
   function mainTraits(c: Creature): string {
     const pheno = getPhenotype(c, 'adult');
     const list = visibleTraits(pheno, 'adult')
@@ -92,6 +104,14 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
     );
   }
 
+  /**
+   * 必要な条件を **全部** 並べる。
+   *
+   * `canBreed` は最初に引っかかった 1 つしか返さないので、
+   * コインが 0 でも「機嫌が たりません」としか出ず、何を揃えれば動くのかが分からない。
+   * 判定の正本は canBreed のままにしたうえで、表示だけ UI 側で列挙する。
+   * しきい値は format.ts の BREEDING_UI（game/config.ts の写し）を使う。
+   */
   function conditions(a: Creature | undefined, b: Creature | undefined): { ok: boolean; text: string }[] {
     const now = Date.now();
     const rows: { ok: boolean; text: string }[] = [];
@@ -224,6 +244,7 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
         conditionsHtml(condRows) +
         `</span>` +
         `<button type="button" class="btn btn--cost" data-act="breed"${chk.ok ? '' : ' disabled'}>` +
+        // 交配は 80 コインかかる。押してから減るのでは事後報告なので、ボタンに併記する。
         `<span>交配する</span><span class="btn__cost">${icon('coin')} ${BREEDING_UI.costCoins}</span></button></div>` +
         `</div>` +
         geneticsSection +
@@ -251,6 +272,7 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
         ),
     );
 
+    // 成功したときは、生まれた卵まで自動で送る（成功が画面外だと気付けない）。
     if (scrollToBorn) {
       scrollToBorn = false;
       const born = $('[data-born]', host);
@@ -271,6 +293,9 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
       bornEggId = r.eggId ?? null;
       sfx.play('breed');
       burstSparkles($('.compare', host), 16);
+      // 交配すると両親の機嫌が下がるので、選択を残したままだと
+      // 成功直後に「機嫌が たりません」＋灰色のボタンが出て、失敗に見える。
+      // 成功をはっきり見せて、親の選択は解除する。
       justBred = true;
       scrollToBorn = true;
       aId = null;
@@ -281,17 +306,19 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
       toast('あたらしい たまごが 生まれました。', 'good', 4200);
       return;
     }
-    if (act === 'tonursery') return;
+    if (act === 'tonursery') return; // 通常のリンクとして遷移させる
 
     const id = t.dataset.pickparent;
     if (!id) return;
     sfx.play('tap');
+    // 次の交配へ進んだ＝余韻は終わり。目標行を動かしてよい。
     if (justBred) resumeObjective();
     justBred = false;
     if (id === aId) aId = null;
     else if (id === bId) bId = null;
     else if (!aId) aId = id;
     else if (!bId) bId = id;
+    // 2 体そろっているときは、押した子を親B に入れ替える（選び直しやすくする）。
     else bId = id;
     render();
   });
@@ -302,6 +329,7 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
     update: render,
     dispose() {
       off();
+      // 止めっぱなしにすると、他の画面で目標行が固まってしまう。
       resumeObjective();
     },
   };

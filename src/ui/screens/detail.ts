@@ -55,6 +55,16 @@ interface ParentView {
 /**
  * 見える特徴どうしを突き合わせた比較文（UI 側で組み立てる版）。
  * 鑑定前はこちらだけを使い、遺伝型を推測できる文を出さない。
+ *
+ * genetics の explainInheritance を使えないのは 2 つの場合:
+ *   1. 親が 1 体しか たどれない
+ *      … あちらは **両親そろっている前提**の文（「両親そろって同じ」）を作るので、
+ *        片親に流用すると嘘になる。
+ *   2. この子が まだ 成体でない
+ *      … あちらは Phenotype.parts を直接読む。卵・幼体の Phenotype は
+ *        器官の値を **成体基準のまま持っている**（孵化後にそのまま使うため）ので、
+ *        そのまま文にすると「成体になると羽が生える」が先に分かってしまう。
+ *        ここは必ず visibleTraits(child, stage) を通し、伏せるべきものは比較しない。
  */
 function traitCompareLines(
   child: Phenotype,
@@ -304,6 +314,11 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       : '';
 
     // ── 親子比較 ──
+    //
+    // 以前は「両親そろっているときだけ」比較を組んでいたので、
+    // 親を 1 体 手放しただけで、本作でいちばん面白いところが丸ごと消えていた。
+    // いまは 手もとの個体 → 森へかえした子の記録 の順にたどり、
+    // 片方しか たどれなくても、たどれた側の列と比較文は必ず出す。
     let compareHtml = '';
     if (c.parents) {
       const names = c.parentNames ?? ['親A', '親B'];
@@ -335,6 +350,9 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
         );
       };
 
+      // 比較文の作り分け。
+      //   両親そろっていて この子も成体で **鑑定済み** … genetics の explainInheritance
+      //   それ以外 … UI 側の突き合わせ（片親でも成立し、遺伝型も漏らさない）
       const known = [pa, pb].filter((v) => v.creature !== null);
       let lines: string[] = [];
       // 鑑定前は「似ている」を観察するだけ。鑑定後だけ遺伝説明へ進む。
@@ -361,6 +379,7 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
             ? `${v.name} は 森へ かえした子。姿は 標本帳の 記録から よみがえらせています。`
             : `${v.name} は 記録が のこっていないので、姿を 出せません。`,
         );
+      // 成体になる前は、伏せている器官のぶんだけ比べられることが少ない。
       if (stage !== 'adult') notes.push('成体に なると、比べられる ところが もっと 増えます。');
       if (stage === 'adult' && !appraised) notes.push('鑑定すると、見た目の比較だけでは分からない遺伝情報まで調べられます。');
       const note =
@@ -382,6 +401,10 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     }
 
     // ── 手放す候補の切り替え ──
+    //
+    // 枠が満杯のとき、目標行は「手放す子を えらぶ」でこの画面へ飛ばしてくるが、
+    // 飛び先はその段階の先頭 1 体で固定されていた。
+    // 別の子にするには標本帳を経由するしかなかったので、ここに並べて置く。
     const used = capacityUsed(app.state);
     const full = used[stage] >= app.state.capacity[stage];
     const others = full ? creaturesByStage(app.state, stage).filter((o) => o.id !== c.id) : [];
@@ -412,6 +435,8 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
         (c.bestScore > 0 ? `<span class="pill pill--brass">${icon('medal')} 最高 ${Math.round(c.bestScore)} 点</span>` : '') +
         (c.exhibitionCount > 0 ? `<span class="pill">展示 ${c.exhibitionCount} 回</span>` : '') +
         `</div>` +
+        // 手放す操作はここにしか無いので、スクロールせずに届く位置に置く。
+        // 枠が満杯で進行が止まったとき、目標行のボタンがこの画面へ直接飛ばしてくる。
         `<div class="row" style="margin-bottom:var(--sp-3)">` +
         `<button type="button" class="btn btn--sm" data-act="care">育成室で 世話する</button>` +
         `<button type="button" class="btn btn--ghost btn--sm" data-act="rename">名前を 変える</button>` +
@@ -420,6 +445,8 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
         `</div>` +
         switchHtml +
         `<div class="stage stage--detail" style="margin-bottom:var(--sp-4)"><div class="stage__art" data-art></div></div>` +
+        // 親子の比べっこは本作でいちばん面白いところなので、絵のすぐ下に置く。
+        // （以前は全高 5000px 超のいちばん下にあり、ほぼ誰も辿り着けなかった）
         (compareHtml ? section('親子の 比べっこ', compareHtml, undefined, 'pair') : '') +
         section('いまの ようす', `<div class="card card--tight">${gaugesFor(c)}</div>`, undefined, 'chart') +
         (flavorHtml ? section('観察ノート', flavorHtml, undefined, 'book') : '') +
@@ -548,6 +575,14 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     render();
   }
 
+  /**
+   * この子を手放す。
+   *
+   * 枠（各段階 3 体）が満杯になると孵化・成体化が止まり、
+   * 手放す以外に抜ける道が無い。その唯一の操作がここ。
+   * 拒否の条件（残り 2 体以下では手放せない）は game 側が持っているので、
+   * 判定は releaseCreature に任せ、返ってきた理由をそのまま見せる。
+   */
   async function doRelease(c: Creature): Promise<void> {
     const ok = await confirmDialog(
       `${c.name} を 手放しますか？`,
@@ -561,6 +596,7 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     );
     if (!ok) return;
 
+    // 記録は「手放す前」に取る。releaseCreature を通ると state から消えてしまう。
     const snapshot = { ...c };
     const r = releaseCreature(app.state, c.id);
     if (!r.ok) {
@@ -574,6 +610,7 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     }
 
     sfx.play('back');
+    // 観察帳から消さない。姿（遺伝情報）ごと UI 側の記録に残す。
     recordRelease(snapshot);
     app.save('手放し');
     toast(`${c.name} を 森へ かえしました。記録は 標本帳に のこります。`, 'info', 4600);

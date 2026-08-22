@@ -1,8 +1,25 @@
 /**
  * 標本帳（コレクション）。
  *
- * 鑑定前は「見た印象」だけを出し、正確な希少度で並べ替えたり
- * rarity tier を表示したりしない。鑑定済み個体だけ正式な希少度を使える。
+ * 【要件】
+ *   - 所持個体の一覧。
+ *   - 並べ替えができること。
+ *   - 親子・兄弟の関係が分かること。
+ *
+ * 【親子関係の見せ方】
+ *   Creature.parents（ID）と parentNames（名前のスナップショット）の両方を使う。
+ *   親を手放していても parentNames が残るので、系譜の表示は途切れない。
+ *   兄弟は「親の組み合わせが同じ個体」として求める。
+ *
+ * 【森へ かえした子】
+ *   枠は各段階 3 体しかなく、交配のたびに親を手放すことになる。
+ *   手放した子が観察帳から消えると「続けるほど記録が減る観察帳」になってしまうので、
+ *   UI 側の記録（releasedLog）をタブで並べる。姿は保存した遺伝情報から描き直す。
+ *
+ * 【鑑定前は伏せる】
+ *   正確な希少度で並べ替えたり rarity tier を表示したりしない。
+ *   並び順から exact score を逆算されるのも漏れなので、
+ *   「めずらしさ」の並べ替えは鑑定済み個体どうしだけで比べる。
  */
 
 import type { Creature } from '../../core/types.ts';
@@ -31,6 +48,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
 
 const STAGE_ORDER: Record<string, number> = { egg: 0, juvenile: 1, adult: 2 };
 
+/** 親の組が同じなら兄弟。順序は問わないので並べ替えてから比べる。 */
 function familyKey(c: Creature): string | null {
   if (!c.parents) return null;
   return [...c.parents].sort().join('|');
@@ -77,9 +95,16 @@ export function screenCollection(app: App, host: HTMLElement): Screen {
     const children = app.state.creatures.filter((o) => o.parents?.includes(c.id));
     if (children.length > 0) bits.push(`子：${children.map((s) => s.name).join('・')}`);
     if (bits.length > 0) return bits.join(' / ');
+    // カードの世代表示と食い違わせない（generation は 1 始まり＝初代）。
     return c.generation <= 1 ? '初代（親の いない子）' : '親の 記録が のこっていません';
   }
 
+  /**
+   * 森へ かえした子の 1 枚。
+   *
+   * 記録はもう state に無いので、押しても開ける詳細画面が無い。
+   * リンクに見せて行き止まりにするより、そこで完結する札にする。
+   */
   function releasedCard(r: ReleasedRecord): string {
     const c = releasedAsCreature(r);
     const pheno = getPhenotype(c, r.stage);
