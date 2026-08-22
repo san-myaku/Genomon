@@ -104,6 +104,22 @@ node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/
 `tests/coat.test.ts` が「体と同じ形を線として描き直しているパーツが無いこと」を
 260 個体で機械的に見ている。
 
+### 2.8. 鑑定前に「確定した希少度」を出さない
+
+`rarity.score` / `rarity.tier` / `rarity.reasons` は **鑑定済み個体だけ** に出す
+（`isAppraised`。経緯は [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) の **D-041**）。
+詳細画面だけ伏せても意味がない。実際に 4 経路から漏れていた:
+
+1. カードの tier ピル（標本帳・交配・展示会）→ `isAppraised` で出し分ける
+2. 展示会の「希少性」の点数 → `judgeScale` の単調変換なので逆算できる。
+   未鑑定では数字を伏せ、バーも粗く丸める
+3. 審査員コメントの `rarity.reasons[0]` → 未鑑定では出さない
+4. 成体化時の「珍しい個体の音」→ `observedRarity` を条件にする
+
+`rarity` を新しく画面へ出すときは、必ず `isAppraised` を通すこと。
+**並び順・点数・音・価格の内訳も情報**である。
+逆算できないかまで確かめる（総合点のように、ゆらぎが乗っていて解けないものは残してよい）。
+
 ### 3. ビルドエントリは `index.html` だけ
 
 `vite.config.ts` の `build` は `index.html`（本体ゲーム）だけを対象にする。
