@@ -51,6 +51,23 @@ export {
 // ── 展示会 ─────────────────────────────────────────────────
 export { canExhibit, exhibitCooldownLeft, runExhibition } from './exhibition.ts';
 
+// ── 鑑定 ───────────────────────────────────────────────────
+export {
+  APPRAISAL_COST,
+  appraiseCreature,
+  appraisedAtOf,
+  canAppraise,
+  deriveGeneticReport,
+  isAppraised,
+  observedRarity,
+  type AppraisalAvailability,
+  type AppraisalResult,
+  type CategoricalGeneReport,
+  type GeneticReport,
+  type NumericGeneReport,
+} from './grading.ts';
+export { deriveFlavorText, type FlavorKind, type FlavorText } from './flavor.ts';
+
 // ── 交配 ───────────────────────────────────────────────────
 export { breedCooldownLeft, breedingPreview, canBreed, doBreed, findBreedablePair } from './breeding.ts';
 
