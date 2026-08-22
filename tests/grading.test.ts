@@ -141,16 +141,49 @@ describe('鑑定前の観察とフレーバー', () => {
     expect((rough as unknown as Record<string, unknown>)['score']).toBeUndefined();
   });
 
-  it('同じ個体は同じフレーバーになり、集団では複数の文章が出る', () => {
+  it('同じ個体は同じフレーバーになる', () => {
     const p = phenotypeOf(randomGenotype('flavor-same'), 'adult');
     expect(deriveFlavorText(p)).toEqual(deriveFlavorText(p));
+  });
 
-    const texts = new Set<string>();
-    for (let i = 0; i < 40; i++) {
-      const q = phenotypeOf(randomGenotype(`flavor-${i}`), 'adult');
-      texts.add(deriveFlavorText(q).text);
+  /**
+   * 【なぜ「種類が 8 より多い」では足りなかったか — 実測】
+   *   最初の版はこの検査を通っていたが、600 個体で数えると
+   *   **39 種類しか出ず、最頻の 1 文が 11%**、半数の個体が 11 種類に
+   *   集中していた（「毛がある」だけで 36% の個体が同じ文になっていた）。
+   *   集めて眺めるゲームでは、すぐ「また同じ文」に気づく。
+   *   種類の数ではなく **偏り** を見る。
+   */
+  it('600 個体で、同じ文に偏らない', () => {
+    const counts = new Map<string, number>();
+    const N = 600;
+    for (let i = 0; i < N; i++) {
+      const q = phenotypeOf(randomGenotype(`flavor-dist-${i}`), 'adult');
+      const t = deriveFlavorText(q).text;
+      counts.set(t, (counts.get(t) ?? 0) + 1);
     }
-    expect(texts.size).toBeGreaterThan(8);
+    const sorted = [...counts.values()].sort((a, b) => b - a);
+
+    // 種類そのもの
+    expect(counts.size, '文の種類が少なすぎる').toBeGreaterThanOrEqual(90);
+    // 最頻の 1 文が全体を占めていないこと
+    expect(sorted[0]! / N, '同じ文が出すぎる').toBeLessThan(0.06);
+    // 半数の個体が、ごく少数の文に集中していないこと
+    let acc = 0;
+    let half = 0;
+    for (const n of sorted) {
+      acc += n;
+      half++;
+      if (acc >= N / 2) break;
+    }
+    expect(half, '半数の個体が少数の文に集中している').toBeGreaterThanOrEqual(20);
+  });
+
+  it('カード用の要約にも、本編と同じフレーバーが載る', () => {
+    const state = newGame('flavor-report');
+    const c = pushAdult(state, randomGenotype('flavor-report-g'));
+    const report = deriveGeneticReport(c);
+    expect(report.flavor).toEqual(deriveFlavorText(phenotypeOf(c.genotype, 'adult')));
   });
 });
 
