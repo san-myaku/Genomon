@@ -137,6 +137,20 @@ export interface CategoricalGeneReport {
   /** 発現しなかった側。ホモ/共優性なら null。 */
   hiddenAllele: GeneticAlleleView | null;
   coExpressed: boolean;
+  /**
+   * 遺伝的には発現しているのに、**見た目には出ていない** 場合の実際の姿。
+   * 出ているとき（＝食い違いが無いとき）は null。
+   *
+   * 【なぜ要るか — 実際に食い違っていた】
+   *   `耳先色` は耳が無ければ描かれない（`phenotype.ts`:
+   *   `earTip: expr.ears.id === 'none' ? 'none' : expr.earTip.id`）。
+   *   同じ remap は `足`（素体依存）・`羽`（素体依存）にもある。
+   *   これを黙って「発現：みみさき色」とだけ出すと、すぐ上の
+   *   「見えている特徴：耳先色 なし」と矛盾して読める。
+   *   育種家にとっては「持っているが出ていない」こと自体が重要な情報なので、
+   *   隠さずに **出ていない理由** を添えて見せる。
+   */
+  suppressed: { label: string; note: string } | null;
 }
 
 export interface NumericGeneReport {
@@ -191,7 +205,23 @@ function alleleView(locus: CatLocus, id: string): GeneticAlleleView {
   };
 }
 
-/** phenotype.ts の発現規則と同じ判断を、鑑定表示用に再現する。 */
+/**
+ * phenotype.ts の発現規則と同じ判断を、鑑定表示用に再現する。
+ *
+ * 【ここが二重実装であることの注意】
+ *   本来の発現は `genetics/phenotype.ts` の `expressCat` が決めている。
+ *   あちらが公開されていないので同じ規則をここに写しているが、**片方だけ直すと
+ *   レポートが嘘をつく**（画面には「発現：A」と出るのに、絵は B で描かれる）。
+ *   `tests/grading.test.ts` の「レポートの発現が実際の表現型と一致する」が
+ *   全カテゴリ座 × 多数の個体で突き合わせているので、ずれた瞬間に落ちる。
+ *   `expressCat` を変えるときは、必ずここも一緒に直すこと。
+ *
+ * 【seed は必ず genotype.seed を使う】
+ *   `expressCat` は `new Rng(genotype.seed)` を根に持つ。`creature.seed` は
+ *   通常は同じ値だが、壊れたセーブの復旧（`coerceCreature`）では
+ *   別の文字列になり得る。そこで食い違うと、同値ヘテロの座だけ
+ *   「発現している方」が入れ替わって表示される。
+ */
 function expressionFor(
   seed: string,
   locus: CatLocus,
@@ -239,12 +269,47 @@ function expressionFor(
   };
 }
 
+/**
+ * 遺伝的な発現と、実際に描かれる姿が食い違いうる座。
+ *
+ * `phenotype.ts` が `parts` を作るとき、素体や他の器官の有無で差し替える:
+ *   - `earTip` … 耳が無ければ色の出る場所が無い
+ *   - `wings`  … スライム型では羽が浮いて見えるので出さない
+ *   - `feet`   … 幽霊型は足なし／スライム型は『ねっこ』だけ／
+ *                まる型は「足あり」優先で、`none` なら **隠れていた側**が出る
+ * 育種家にとっては「持っているのに出ていない」「隠れていた方が出ている」の
+ * どちらも重要な情報なので、伏せずに理由を添えて見せる。
+ */
+const REMAPPED_LOCI: readonly CatLocus[] = ['earTip', 'wings', 'feet'];
+
+function suppressionNote(locus: CatLocus, expressedId: string, shownId: string): string {
+  if (shownId === 'none') {
+    return locus === 'earTip'
+      ? '耳が無いので、色の出る場所がありません。'
+      : 'この素体の形には合わないので、姿には出ていません。';
+  }
+  if (expressedId === 'none') {
+    return 'この素体では「なし」がそのまま出ないため、隠れていた側が姿に出ています。';
+  }
+  return 'この素体の姿では、別のかたちになって出ています。';
+}
+
 export function deriveGeneticReport(creature: Creature): GeneticReport {
   const pheno = phenotypeOf(creature.genotype, 'adult');
+  const parts = pheno.parts as unknown as Record<string, unknown>;
 
   const categorical: CategoricalGeneReport[] = CAT_LOCI.map((def) => {
     const pair = catPair(creature.genotype, def.locus);
-    const expression = expressionFor(creature.seed, def.locus, pair);
+    const expression = expressionFor(creature.genotype.seed, def.locus, pair);
+    // 実際に描かれた姿と食い違っていたら、その事実を添える。
+    const shown = typeof parts[def.locus] === 'string' ? (parts[def.locus] as string) : null;
+    const suppressed =
+      REMAPPED_LOCI.includes(def.locus) && shown !== null && shown !== expression.expressedId
+        ? {
+            label: alleleLabel(def.locus, shown),
+            note: suppressionNote(def.locus, expression.expressedId, shown),
+          }
+        : null;
     return {
       locus: def.locus,
       label: def.label,
@@ -254,6 +319,7 @@ export function deriveGeneticReport(creature: Creature): GeneticReport {
       expressedLabel: expression.expressedLabel,
       hiddenAllele: expression.hidden ? alleleView(def.locus, expression.hidden) : null,
       coExpressed: expression.coExpressed,
+      suppressed,
     };
   });
 

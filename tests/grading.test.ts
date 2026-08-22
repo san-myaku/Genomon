@@ -14,6 +14,8 @@ import {
 import { createCreature } from '../src/game/state.ts';
 import { CAT_LOCUS_IDS, NUM_LOCUS_IDS, randomGenotype, phenotypeOf } from '../src/genetics/index.ts';
 import { clearSave, load, resetStorageCache, save } from '../src/save/index.ts';
+import { coerceState } from '../src/save/schema.ts';
+import { CAT_LOCI } from '../src/genetics/loci.ts';
 
 const T0 = 1_800_000_000_000;
 
@@ -149,5 +151,137 @@ describe('鑑定前の観察とフレーバー', () => {
       texts.add(deriveFlavorText(q).text);
     }
     expect(texts.size).toBeGreaterThan(8);
+  });
+});
+
+describe('レポートが実際の表現型と食い違わないこと', () => {
+  /**
+   * 【なぜこの検査が要るか】
+   *   `grading.ts` の `expressionFor` は `genetics/phenotype.ts` の `expressCat` を
+   *   **写した二重実装**。片方だけ直すと、レポートには「発現：A」と出るのに
+   *   絵は B で描かれる、という嘘のレポートになる。型もテストも通ってしまうので、
+   *   ここで実際の Phenotype と突き合わせて機械的に捕まえる。
+   *
+   *   `Phenotype.traits` は発現している値（value）と保因（carrier）を持つので、
+   *   それをレポートの expressedLabel / hiddenAllele と 1 対 1 で比べればよい。
+   */
+  it('全カテゴリ座で、発現アレルと保因アレルが Phenotype と一致する', () => {
+    const state = newGame('report-agree');
+    const mismatched: string[] = [];
+
+    for (let i = 0; i < 120; i++) {
+      const g = randomGenotype(`agree-${i}`);
+      const c = pushAdult(state, g, T0 + i);
+      const report = deriveGeneticReport(c);
+      const pheno = phenotypeOf(g, 'adult');
+
+      const parts = pheno.parts as unknown as Record<string, unknown>;
+      for (const row of report.categorical) {
+        const trait = pheno.traits.find((t) => t.locus === row.locus);
+        if (!trait) continue; // traits に載らない座（発光・2色ほか）は比較対象外
+
+        // 【`耳先色` だけ traits の作りが違う】
+        //   `buildTraits` は耳先色に限って **描かれた値** を出し、
+        //   羽・足は遺伝的な発現をそのまま出す（phenotype.ts の作りがそうなっている）。
+        //   ここではレポートが遺伝的な発現を正しく持っているかを見たいので、
+        //   耳先色だけ描かれた側と突き合わせる。
+        const expected = row.locus === 'earTip' && row.suppressed ? row.suppressed.label : row.expressedLabel;
+        if (trait.value !== expected) {
+          mismatched.push(`${row.locus} 発現 ${expected} ≠ ${trait.value}`);
+        }
+        const carrier = trait.carrier ?? null;
+        const hidden = row.hiddenAllele?.label ?? null;
+        if (carrier !== hidden) {
+          mismatched.push(`${row.locus} 保因 ${String(hidden)} ≠ ${String(carrier)}`);
+        }
+
+        // 姿と食い違うなら、必ず理由が添えられていること。
+        const shownId = parts[row.locus];
+        if (typeof shownId === 'string' && shownId !== row.expressedId && !row.suppressed) {
+          mismatched.push(`${row.locus} 姿(${shownId})と発現(${row.expressedId})の食い違いに説明が無い`);
+        }
+      }
+    }
+    expect(mismatched.slice(0, 8)).toEqual([]);
+  });
+
+  it('カテゴリ座はカタログの全座をもれなく出す', () => {
+    const state = newGame('report-cover');
+    const c = pushAdult(state, randomGenotype('report-cover-g'));
+    const report = deriveGeneticReport(c);
+    expect(report.categorical.map((g) => g.locus)).toEqual(CAT_LOCI.map((d) => d.locus));
+  });
+});
+
+describe('鑑定状態の保存', () => {
+  /**
+   * 【壊れたセーブの救出でも鑑定を落とさない】
+   *   `appraisedAt` は Creature の正式フィールドではないので、1 フィールドずつ
+   *   組み直す `coerceState` では拾わないと消える。プレイヤーから見れば
+   *   「壊れたセーブを直したら、お金を払った鑑定だけ無かったことになった」。
+   */
+  it('coerceState（破損セーブの救出）でも鑑定済みが残る', () => {
+    const state = newGame('grading-coerce');
+    state.coins = 999;
+    const c = pushAdult(state, randomGenotype('grading-coerce-g'));
+    expect(appraiseCreature(state, c.id, T0 + 5).ok).toBe(true);
+
+    // JSON を一往復させてから、壊れたセーブとして救出させる。
+    const raw = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
+    (raw as { version?: unknown }).version = 'broken';
+    const rescued = coerceState(raw);
+    expect(rescued).not.toBeNull();
+    const revived = rescued!.creatures.find((x) => x.id === c.id);
+    expect(revived, '救出で個体ごと消えている').toBeTruthy();
+    expect(isAppraised(revived!)).toBe(true);
+  });
+
+  it('未鑑定の個体は救出後も未鑑定のまま', () => {
+    const state = newGame('grading-coerce2');
+    const c = pushAdult(state, randomGenotype('grading-coerce2-g'));
+    const raw = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
+    const rescued = coerceState(raw);
+    expect(isAppraised(rescued!.creatures.find((x) => x.id === c.id)!)).toBe(false);
+  });
+});
+
+describe('見た目に出ない発現の扱い', () => {
+  /**
+   * 【実際に食い違っていた】
+   *   耳が無い個体は、耳先色が遺伝的に発現していても描かれない
+   *   （`phenotype.ts`: `earTip: expr.ears.id === 'none' ? 'none' : expr.earTip.id`）。
+   *   レポートが「発現：みみさき色」とだけ出すと、すぐ上の
+   *   「見えている特徴：耳先色 なし」と矛盾して読める。
+   *   持っていることと出ていることを **両方** 書けているかを見る。
+   */
+  it('耳が無い個体の耳先色は、発現と「出ていない理由」の両方を持つ', () => {
+    const state = newGame('suppressed');
+    let found = 0;
+
+    for (let i = 0; i < 400 && found < 3; i++) {
+      const g = randomGenotype(`suppressed-${i}`);
+      const pheno = phenotypeOf(g, 'adult');
+      if (pheno.parts.ears !== 'none' || pheno.parts.earTip !== 'none') continue;
+      const c = pushAdult(state, g, T0 + i);
+      const row = deriveGeneticReport(c).categorical.find((x) => x.locus === 'earTip');
+      if (!row || row.expressedId === 'none') continue;
+
+      found++;
+      expect(row.suppressed, '出ていない理由が書かれていない').not.toBeNull();
+      expect(row.suppressed!.label).toBe('なし');
+      expect(row.suppressed!.note.length).toBeGreaterThan(4);
+    }
+    expect(found, '検査対象の個体が見つからなかった（検査が空回りしている）').toBeGreaterThan(0);
+  });
+
+  it('食い違いが無い座には理由を付けない', () => {
+    const state = newGame('suppressed-none');
+    const c = pushAdult(state, randomGenotype('suppressed-none-g'));
+    const report = deriveGeneticReport(c);
+    const pheno = phenotypeOf(c.genotype, 'adult');
+    for (const row of report.categorical) {
+      const parts = pheno.parts as unknown as Record<string, unknown>;
+      if (parts[row.locus] === row.expressedId) expect(row.suppressed).toBeNull();
+    }
   });
 });
