@@ -68,8 +68,8 @@ node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/
 カタログ配列から削除すると、その個体が読み込み時に該当なしで壊れる。
 
 ある形質を「もう新しく出したくない」場合の正しい手順（`ocelli`（めだま模様）・
-`button`（ボタン瞳孔）・`mossRing`（こけの首かざり）・`shard`（かけら結晶）で
-実際に使った手順）:
+`button`（ボタン瞳孔）・`mossRing`（こけの首かざり）・`shard`（かけら結晶）・
+`wisp`（ひとすじの毛）で実際に使った手順）:
 
 1. `CAT_LOCI`（`loci.ts`）の配列から該当エントリを削除する
    （これで新規個体には二度と出ない）。
@@ -79,6 +79,30 @@ node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/
    理由（カタログから外れているが現役／消すと個体の見た目が無地に化ける）を書く。
 3. `weight`/`dominance` を 0 にするような中途半端なやり方はしない。
    配列から完全に取り除くか、残すかのどちらかにする。
+
+### 2.5. 遺伝子座を新設するときは、カタログの先頭を既定形質にする
+
+セーブされた個体の `cat` には、その座が **存在しない**。読み込み側は
+`catPairOrDefault`（`phenotype.ts`）/ `pairOrDefault`（`genetics/breeding.ts`）で
+**カタログ配列の先頭の対立遺伝子** をホモで補う。したがって先頭は必ず
+`none` 相当の「その形質を持たない」側に置くこと。先頭に派手な形質を置くと、
+既存の全個体に一斉にそれが生える。
+
+`Genotype.cat[locus]` を素で添字参照しないこと（`pa[0]` が undefined で落ちる）。
+新しく読む場所を足すときは上の 2 つのヘルパーを通す。経緯は
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) の **D-037**。
+
+### 2.6. もこもこ（coat=fuzz）の体には輪郭を引かない
+
+房そのものが輪郭を担う。体の輪郭を引き直すと **房の内側に 2 本目の輪郭**が
+出て、房が「縁に付けた飾り」に見える（製品オーナー指摘。経緯は
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) の **D-038**）。
+
+判定は `coatOwnsOutline()`（`render/parts/coat.ts`）。体の輪郭に沿って
+線を引く処理を足すときは、必ず `rimPath()`（`render/parts/body.ts`）を通すこと。
+`path(shape.d, { stroke: ... })` を直接書くと、もこもこの個体で輪郭が復活する。
+`tests/coat.test.ts` が「体と同じ形を線として描き直しているパーツが無いこと」を
+260 個体で機械的に見ている。
 
 ### 3. ビルドエントリは `index.html` だけ
 
@@ -98,7 +122,7 @@ node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/
 
 ```bash
 npx tsc --noEmit     # 型チェック
-npx vitest run       # ユニットテスト（現在 230 件・16 ファイル）
+npx vitest run       # ユニットテスト（現在 250 件・18 ファイル）
 npx vite build       # 本番ビルド（dist/ に index.html 系だけが出ること）
 npx playwright test  # e2e（初回は `npx playwright install chromium` が要る）
 ```
@@ -130,6 +154,9 @@ SVG を目で見て確認する。** テストが green でも「合成された
 - `lab.html`（Visual Lab）の「一覧」カードにも同じ「絞り込み」ピックロー
   （部位→種類、最大 3 件）がある（2026-08-12 追加、`src/dev/visualLab.ts` の
   `gridFilters`）。単体表示・自動検査には影響しない、一覧専用のスコープ。
+- `lab.html?tab=cards`（Cards Lab）— トレーディングカードの研究環境。
+  Showcase 1 枚・Finish 比較 6 枚・Design 比較 3 枚・個体比較 8〜30 枚を
+  同時に見られる。カードの美術判断はここで行う（詳細は下の「Cards Lab」）。
 - スクリーンショットは Playwright で撮る（このプロジェクトには
   `node_modules/playwright` が既に入っている）。**サブエージェントの
   「確認しました」という自己申告だけを信用せず、必ず自分でも一度は
@@ -178,6 +205,56 @@ SVG を目で見て確認する。** テストが green でも「合成された
 `src/core/**`・`src/genetics/**`（カタログ以外は触ってよい場合もある）・
 `src/game/**`・`src/save/**`・`src/ui/**`・`tests/**`・`e2e/**` は、
 純粋な見た目修正エージェントのスコープ外として渡すのが基本。
+
+## Cards Lab（`lab.html?tab=cards`）
+
+トレーディングカードの **研究環境だけ** が入っている。ゲーム本編には
+カードシステムを **まだ一切入れていない**（鑑定所・発行・所持・アルバム・
+マーケット・GameState 変更・セーブ移行はすべて未実装）。設計の経緯と
+踏んだ失敗は [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) の **D-034**。
+
+守ること:
+
+1. **Visual Lab の設定キー（`genomon.dev.prefs.v1`）へ書かない。**
+   Cards Lab は `genomon.dev.cardprefs.v1` / `genomon.dev.cardsaved.v1` を使う
+   （`src/dev/cardStore.ts`）。同じキーに書くと、片方を触るたびにもう片方の
+   seed や段階が飛ぶ。cardStore.ts は `PREFS_KEY` を import しないことで
+   経路そのものを作らないようにしてある。
+2. **カード用の個体生成処理を新しく書かない。** `src/dev/gen.ts` の
+   `makeSpecimen` / `makeSpecimenNear` / `drawSpecimen` を使う。カードに載る
+   ゲノモンは Visual Lab・本編と同一でなければ、見た目の判断が無意味になる。
+3. **カードの値も決定論。** `Math.random()` も `Date.now()` も使わない
+   （`new Rng(seed).stream('card:...')` を使う）。`tests/cards.test.ts` が
+   2 回導出して完全一致することを検査している。
+4. **カードの中に置く SVG は `<path>` で描く。** `<rect width="1">` は
+   ライブラリ CSS の `.holo-card__content *{width:auto}` に上書きされて
+   幅 0 になり、絵が消える（QR で実際に消えた）。
+5. **foil マスクの SVG は「描いた所＝箔が出る／透明な所＝箔が出ない」。**
+   CSS の `mask-image` は輝度ではなくアルファで切り抜く。黒く塗っても隠れない。
+6. **CSS は `src/dev/cardStyles.ts` に置く。** `labStyles.ts`（開発ツール UI）へ
+   カードのスタイルを足さない。
+7. `@kongyo2/cards-css` は **devDependency**。本編（`index.html` 系）から
+   import しない。`npx vite build` 後、`dist/` に `holo-card` の文字列が
+   出ないことを確認すること。
+8. **スマホでの持ちかたを壊さない**（経緯は D-035）。
+   - DOM の並びは「見る場が先」。PC 側は `order` で元に戻しているので、
+     並びを変えたら **PC とスマホの両方で目視する**（order を書き忘れると
+     設定パネルが 1fr 側へ落ちてカードが潰れる）。
+   - カードの大きさは横幅だけで決めない。高さからも上限を掛けないと、
+     下端が画面下のデッキバーの裏へ潜る。
+   - `cardLab.ts` の `NARROW_PX`（900）と `cardStyles.ts` の
+     `@media (max-width:899px)` は **必ず揃える**。片方だけ変えると、
+     「畳んであるのにデッキバーが出ない」といった中途半端な幅ができる。
+   - 比較と一覧は狭い画面では畳んであり、**開くまで作らない**。
+     `renderFinishCmp` などに描画を足すときは、この早期 return を残すこと。
+   - **1 端末で見て終わりにしない。** 320 / 360 / 375 / 393 / 428px と横向きを
+     測ること。`body` に `overflow-x:hidden` が効いているので
+     `scrollWidth === clientWidth` でははみ出しを検出できない
+     （実際に 320px で右が 60px 切れているのを見逃した。D-036）。
+9. **`cardStyles.ts` の CARD_CSS はテンプレートリテラルの中の CSS**。
+   コメントにバッククォートを書くと文字列がそこで終わってビルドが止まる。
+   CSS エスケープ（`be` など）も二重に潰れて制御文字になり得るので、
+   記号は直接書く。`tests/cards.test.ts` が制御文字と波かっこの対応を見ている。
 
 ## ドキュメント地図
 

@@ -28,9 +28,13 @@
             └────┬─────┘
                  ▼
             ┌──────────┐
-            │   dev    │  Visual Lab・開発者モード
+            │   dev    │  Visual Lab・開発者モード・Cards Lab
             └──────────┘
 ```
+
+`dev` だけが外部ライブラリ（`@kongyo2/cards-css`）に依存してよい。
+`devDependencies` に入れてあり、本番ビルドの入口（`index.html`）からは
+到達できないので、配布物には 1 バイトも入らない。
 
 **依存は必ず上から下へ一方向。** 下位が上位を import してはならない。
 `core` は他のどのモジュールにも依存しない。
@@ -106,6 +110,12 @@ src/
   dev/
     visualLab.ts  開発者用ビジュアル検査画面
     devmode.ts    開発者モードのコマンド
+    cardLab.ts    Cards Lab（カードの研究環境。lab.html の第 3 タブ）
+    cardModel.ts  個体 → カードの事実（純粋関数・DOM なし）
+    cardArt.ts    foil マスク・DNA 模様・QR 風・抽象背景の SVG 工房
+    cardDesign.ts カード DOM の組み立てと @kongyo2/cards-css の設定
+    cardStyles.ts Cards Lab 専用 CSS（labStyles とは分離）
+    cardStore.ts  Cards Lab 専用の localStorage（Visual Lab とキーを分ける）
 tests/            Vitest（ユニット・統計検証）
 e2e/              Playwright（実ブラウザでのゲームループ通し）
 ```

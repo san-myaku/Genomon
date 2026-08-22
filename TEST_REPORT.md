@@ -18,6 +18,48 @@ npx vite build     → ✓ built
 
 外部ランタイム依存はゼロ（devDependencies のみ）。
 
+### 2026-08-22 の実行（Cards Lab 追加後）
+
+上の「総合」は 2026-08-04 時点の実測値で、その後の反復を反映していない。
+Cards Lab を足した時点で全部を回し直した結果を、上書きせずに併記する。
+
+```
+npx tsc --noEmit    → エラー 0
+npx vitest run      → Test Files 18 passed (18) / Tests 250 passed (250)
+npx playwright test → 46 passed / 7 skipped / 1 failed（skip は幅を限定した検証。
+                      failed は `05-field` の 1 件で、フルスイートでのみ落ちる
+                      既知の flaky。徘徊する別個体とトーストがクリック対象に
+                      重なるのが原因で、単独実行では通る（実際に
+                      `--project=pc` 単独で 1 passed を確認）。落ちる側は実行
+                      ごとに pc / mobile を行き来する）
+npx vite build      → ✓ built（78 modules）
+                      dist/index.html               0.52 kB │ gzip:  0.38 kB
+                      dist/assets/index-*.css      65.99 kB │ gzip: 13.40 kB
+                      dist/assets/index-*.js      399.71 kB │ gzip:137.84 kB
+```
+
+`dist/` の中身は `index.html` とその assets だけ。`lab.html` / `sheet.html` は
+出ておらず、`grep -l "holo-card" dist/assets/*` も 0 件（Cards Lab と
+`@kongyo2/cards-css` が配布物へ漏れていないことの確認）。
+
+新規追加ぶん:
+
+| ファイル | 件数 | 対象 |
+|---|---|---|
+| `tests/coat.test.ts` | 13 | 毛の描画（D-037/D-038）。全種類が描かれる・種類ごとに違う絵になる・決定論・体マスク・viewBox と地面をはみ出さない／**ひとすじが新規個体に出ないこと**と**既存セーブの wisp が今も描けること**／**もこもこに outline パーツが無いこと**・**体と同じ形を線として描き直しているパーツが 1 つも無いこと**（260 個体）・不良が増えないこと |
+| `tests/cards.test.ts` | 12 | カード事実の決定論（2 回導出して完全一致）・foil テクスチャ seed の個体差・Grade を変えても他が動かないこと・証明書番号と通し番号の体裁・実データを使っていること（模様/配色/希少度）・Finish がライブラリに実在する effect を指すこと／**CARD_CSS に制御文字が混ざっていないこと・波かっこの対応・スマホ用の要（`--cards-deck-h`、`.cards-right` の `minmax(0,1fr)`）が残っていること** |
+| `e2e/06-cards-lab.spec.ts` | 13×2 | `?tab=cards` で直接開ける・Showcase/3 種の比較がすべて出る・**Finish 比較の 6 枚が別の箔で、静止状態でも箔が見えている**・Design 切り替えでカードが差し替わる・カード内に実際の `gm-svg` が入っている・**320/360/393/768px のどの幅でも要素が画面をはみ出さない**（`scrollWidth` ではなく矩形で見る）・**スマホ幅でタップ対象が 38px を下回らない**・**Visual Lab の設定キーを書き換えない**／スマホ限定: **カードがデッキバーに隠れず 1 枚まるごと見える**・「つぎのカード」で 4 回めくって 4 体とも別個体・「戻る」で履歴が戻る・デッキの「版面」「箔」が 1 タップで変わる・左右スワイプでめくれる・**320/360/393px のどれでもデッキの主役が 1 行に収まり、カードがデッキに隠れない**／PC 限定: デッキバーが出ず、比較が畳まれていない |
+
+E2E の主要な検査は、実際に一度壊した箇所の回帰テスト。
+「静止状態でも箔が見えている」は、比較の 6 枚が 6 枚とも同じ絵に見えていた件
+（VISUAL_QA の C-4）。「カードがデッキバーに隠れない」は、スマホでカードの
+下端が 29px 潜っていた件（C-10）。どちらも目分量では気づけず、
+要素の矩形を測って初めて数字が出た。
+「要素が画面をはみ出さない」は、`.cards-right` の暗黙カラムが max-content で
+380px に固定され、320px の画面で右が切れていた件（C-16）。
+**`body{overflow-x:hidden}` のせいで `scrollWidth` を見る旧テストは通っていた。**
+`tests/cards.test.ts` の CSS 検査は、実際にルールを外して落ちることを確認済み。
+
 ## テストファイル別
 
 件数は `vitest --reporter=json` の出力から集計した実測値。
@@ -25,18 +67,24 @@ npx vite build     → ✓ built
 | ファイル | 件数 | 対象 |
 |---|---|---|
 | `tests/save.test.ts` | 69 | 保存/読込・破損復旧・バックアップ・チェックサム・ショップ整合性 |
-| `tests/migrate.test.ts` | 32 | v1→v2→v3→v4 連鎖マイグレーション |
+| `tests/migrate.test.ts` | 32 | v1→…→v7 連鎖マイグレーション |
 | `tests/genetics.test.ts` | 25 | seed再現性・表現型変換・500体生成・支配的形質の検査 |
 | `tests/breeding.test.ts` | 17 | 交配・優性潜性・突然変異・親子/兄弟類似性・多世代多様性・希少度分布 |
 | `tests/game.test.ts` | 13 | 世話・展示会・ショップ・クールダウン永続化 |
+| `tests/cards.test.ts` | 12 | カードの決定論・CSS の制御文字と波かっこの対応 |
+| `tests/field.test.ts` | 11 | 飼育フィールドの生活状態・排泄物・配置 |
+| `tests/render.test.ts` | 11 | 1000 体で描画不良・非決定的 SVG を出さないこと |
+| `tests/inspect.test.ts` | 9 | **描画の自動検査そのものの検査**（見逃しと誤検出の両方を固定） |
+| `tests/lashes.test.ts` | 9 | まつげと目の位置関係・体からのはみ出しを増やさないこと |
+| `tests/coat.test.ts` | 8 | 体毛が viewBox と接地線を越えないこと・種類の描き分け・不良を増やさないこと |
 | `tests/progression.test.ts` | 8 | 通しプレイ・進行不能検査・オフライン・間欠プレイ |
-| `tests/inspect.test.ts` | 6 | **描画の自動検査そのものの検査**（見逃しと誤検出の両方を固定） |
-| `tests/integration.test.ts` | 6 | 複数世代の交配・どの段階でも次の案内が出ること |
 | `tests/icons.test.ts` | 6 | UI アイコン名の実在・同一画面内の重複・自己完結した SVG であること |
+| `tests/integration.test.ts` | 6 | 複数世代の交配・どの段階でも次の案内が出ること |
+| `tests/nonvisual.test.ts` | 4 | 見た目に依らない状態遷移 |
 | `tests/satiation.test.ts` | 4 | 連打が有利にならないこと（1 秒あたり効率・必要クリック数） |
 | `tests/contrast.test.ts` | 3 | 牛柄とインクの 3.0:1 を**明暗両テーマ**で固定 |
-| `tests/_lead_check.test.ts` | 3 | リードによる独立検証（希少度到達性・成長差分・分布） |
-| **合計** | **192** | 12 ファイル |
+| `tests/staff.test.ts` | 3 | 飼育員の募集・雇用・報酬 |
+| **合計** | **250** | 18 ファイル |
 
 ## 遺伝の統計検証（実測値）
 
