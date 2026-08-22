@@ -1,9 +1,10 @@
 /**
  * 公認ブリーダー販売所。
  *
- * 売却額は game/market.ts の quote を唯一の正本とし、ここでは内訳の説明と
- * 確認操作だけを担当する。確認前に状態を変更しないので、画面更新や二重クリック
- * があっても「見積もりと実際の入金がずれる」事故を避けられる。
+ * 売却額は game/market.ts の quote を唯一の正本とする。
+ * 市場価格そのものは未鑑定でも提示するが、「希少度が何コイン分か」という
+ * 内訳は鑑定後だけ開示する。価格から完全に価値を隠すのではなく、
+ * 市場の反応をヒントとして残す設計。
  */
 
 import type { Creature, SaleRecord } from '../../core/types.ts';
@@ -16,7 +17,7 @@ import { toast } from '../components/toast.ts';
 import { sfx } from '../../audio/index.ts';
 import { generationLabel, num, STAGE_LABEL } from '../format.ts';
 import { thumbSvg } from '../creatureView.ts';
-import { capacityUsed, getPhenotype, saleQuote, sellCreature, unlockHint } from '../gameApi.ts';
+import { capacityUsed, getPhenotype, isAppraised, saleQuote, sellCreature, unlockHint } from '../gameApi.ts';
 import type { SaleQuote } from '../gameApi.ts';
 
 function quoteRow(label: string, value: number): string {
@@ -42,14 +43,24 @@ function historyRow(record: SaleRecord): string {
 }
 
 export function screenMarket(app: App, host: HTMLElement): Screen {
-  function quoteBreakdown(quote: SaleQuote): string {
+  function quoteBreakdown(quote: SaleQuote, appraised: boolean): string {
+    if (appraised) {
+      return (
+        `<dl class="market-quote">` +
+        quoteRow('基本価格', quote.base) +
+        quoteRow('コンディション', quote.conditionBonus) +
+        quoteRow('めずらしさ', quote.rarityBonus) +
+        quoteRow('展示実績', quote.exhibitionBonus) +
+        quoteRow('世代ボーナス', quote.generationBonus) +
+        `</dl>`
+      );
+    }
+    // 希少度だけを引き算して逆算できないよう、各種補正を1本にまとめる。
+    const adjustments = quote.conditionBonus + quote.rarityBonus + quote.exhibitionBonus + quote.generationBonus;
     return (
       `<dl class="market-quote">` +
       quoteRow('基本価格', quote.base) +
-      quoteRow('コンディション', quote.conditionBonus) +
-      quoteRow('めずらしさ', quote.rarityBonus) +
-      quoteRow('展示実績', quote.exhibitionBonus) +
-      quoteRow('世代ボーナス', quote.generationBonus) +
+      quoteRow('市場評価（内訳未鑑定）', adjustments) +
       `</dl>`
     );
   }
@@ -58,12 +69,13 @@ export function screenMarket(app: App, host: HTMLElement): Screen {
     const result = saleQuote(app.state, c.id);
     const pheno = getPhenotype(c, c.life.stage);
     const favorite = c.favorite ? `<span class="pill pill--brass">お気に入り</span>` : '';
+    const appraisal = isAppraised(c) ? `<span class="pill pill--brass">鑑定済み</span>` : `<span class="pill">未鑑定</span>`;
     const art = thumbSvg(pheno, c.life, `${c.name}（${STAGE_LABEL[c.life.stage]}）`);
 
     if (!result.ok) {
       return (
         `<article class="market-candidate market-candidate--blocked">` +
-        `<div class="market-candidate__head"><span class="market-candidate__name">${esc(c.name)}</span>${stagePill(c.life.stage)}${favorite}</div>` +
+        `<div class="market-candidate__head"><span class="market-candidate__name">${esc(c.name)}</span>${stagePill(c.life.stage)}${favorite}${appraisal}</div>` +
         `<div class="market-candidate__body"><div class="market-candidate__art" aria-hidden="true">${art}</div>` +
         `<div class="market-candidate__info"><p class="market-candidate__meta">${esc(generationLabel(c.generation))}</p>` +
         `<p class="market-candidate__blocked">${esc(result.reason)}</p></div></div>` +
@@ -72,14 +84,18 @@ export function screenMarket(app: App, host: HTMLElement): Screen {
     }
 
     const quote = result.quote;
+    const appraised = isAppraised(c);
     return (
       `<article class="market-candidate">` +
-      `<div class="market-candidate__head"><span class="market-candidate__name">${esc(c.name)}</span>${stagePill(c.life.stage)}${favorite}</div>` +
+      `<div class="market-candidate__head"><span class="market-candidate__name">${esc(c.name)}</span>${stagePill(c.life.stage)}${favorite}${appraisal}</div>` +
       `<div class="market-candidate__body"><div class="market-candidate__art" aria-hidden="true">${art}</div>` +
       `<div class="market-candidate__info"><p class="market-candidate__meta">${esc(generationLabel(c.generation))} ／ 展示 ${c.exhibitionCount} 回</p>` +
       `<div class="market-candidate__price"><span>見積もり</span><strong>${num(quote.price)}</strong><small>コイン</small></div>` +
       `</div></div>` +
-      quoteBreakdown(quote) +
+      quoteBreakdown(quote, appraised) +
+      (!appraised
+        ? `<p class="section__note" style="margin:var(--sp-2) 0">市場は見た目や実績を含めて値を付けますが、希少度の正確な寄与は鑑定するまで分かりません。</p>`
+        : '') +
       `<button type="button" class="btn btn--brass market-candidate__sell" data-sell="${esc(c.id)}">この子を 売る</button>` +
       `</article>`
     );
@@ -119,7 +135,7 @@ export function screenMarket(app: App, host: HTMLElement): Screen {
       ) +
         section(
           '販売する個体を 選ぶ',
-          `<p class="section__note">価格は状態・めずらしさ・展示実績・世代からその場で算出します。販売後は手もとに戻せないため、最後に確認画面を出します。</p>` +
+          `<p class="section__note">市場価格は状態・見た目・展示実績・世代などから算出します。未鑑定では詳細な価値の内訳を伏せます。</p>` +
             `<div class="market-candidates">${cards}</div>`,
           '販売後も 2 体は残るように保護されています。',
           'sprout',
@@ -140,11 +156,15 @@ export function screenMarket(app: App, host: HTMLElement): Screen {
     const favoriteNote = c.favorite
       ? `<p style="color:var(--bad);font-weight:700">この子はお気に入りに 登録されています。</p>`
       : '';
+    const appraisalNote = isAppraised(c)
+      ? '<p>この個体は鑑定済みです。市場価格には正式な希少度評価も反映されています。</p>'
+      : '<p>この個体は未鑑定です。市場価格は提示されますが、希少度の正確な内訳は分かりません。</p>';
     const ok = await confirmDialog(
       `${c.name}を 販売しますか？`,
       `<p><strong>${esc(c.name)}</strong>（${esc(STAGE_LABEL[c.life.stage])}・${esc(generationLabel(c.generation))}）を ` +
         `<strong>${num(q.price)} コイン</strong>で 販売します。</p>` +
-        `<dl class="market-quote">${quoteRow('状態・希少度・実績を反映', q.price - q.base)}${quoteRow('入金額', q.price)}</dl>` +
+        `<dl class="market-quote">${quoteRow('各種評価を反映', q.price - q.base)}${quoteRow('入金額', q.price)}</dl>` +
+        appraisalNote +
         favoriteNote +
         `<p>販売した個体は育成室からいなくなり、販売履歴だけが残ります。</p>`,
       `販売する（${num(q.price)} コイン）`,
