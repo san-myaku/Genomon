@@ -13,6 +13,7 @@ import {
 } from '../src/game/index.ts';
 import { createCreature } from '../src/game/state.ts';
 import { CAT_LOCUS_IDS, NUM_LOCUS_IDS, randomGenotype, phenotypeOf } from '../src/genetics/index.ts';
+import { clearSave, load, resetStorageCache, save } from '../src/save/index.ts';
 
 const T0 = 1_800_000_000_000;
 
@@ -73,14 +74,23 @@ describe('個体鑑定', () => {
     expect(state.coins).toBe(before);
   });
 
-  it('通常のJSON保存・読込で鑑定済み状態が残る', () => {
+  it('実際の save/load を通しても鑑定済み状態が残る', () => {
+    resetStorageCache();
+    clearSave();
+
     const state = newGame('grading-persist');
     state.coins = 999;
     const c = pushAdult(state, randomGenotype('grading-persist-g'));
     expect(appraiseCreature(state, c.id, T0 + 123).ok).toBe(true);
+    expect(save(state).ok).toBe(true);
 
-    const restored: GameState = JSON.parse(JSON.stringify(state));
-    expect(isAppraised(restored.creatures.find((x) => x.id === c.id)!)).toBe(true);
+    const restored = load();
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) throw new Error('save/load failed');
+    expect(isAppraised(restored.state.creatures.find((x) => x.id === c.id)!)).toBe(true);
+
+    clearSave();
+    resetStorageCache();
   });
 });
 
