@@ -45,29 +45,29 @@ function enhance(card: HTMLElement): void {
   if (design === 'collector') {
     node.innerHTML = `<span>“${escapeHtml(f.text)}”</span>`;
     node.style.cssText =
-      'position:absolute;left:5.8%;right:5.8%;bottom:15.5%;z-index:4;' +
-      'font-family:var(--gmc-serif);font-size:2.15cqw;line-height:1.45;' +
+      'position:absolute;left:5.8%;right:5.8%;bottom:16.8%;z-index:4;' +
+      'font-family:var(--gmc-serif);font-size:2.05cqw;line-height:1.45;' +
       'letter-spacing:.045em;color:var(--gmc-ink-soft);text-align:left;' +
       'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;';
   } else if (design === 'natural') {
     node.innerHTML = `<b>${escapeHtml(f.kind)}</b><span>${escapeHtml(f.text)}</span>`;
     node.style.cssText =
-      'position:absolute;left:7.2%;right:7.2%;bottom:5.0%;z-index:4;' +
+      'position:absolute;left:7.2%;right:7.2%;bottom:9.2%;z-index:4;' +
       'display:flex;gap:.65em;align-items:baseline;border-top:.05em solid var(--gmc-ink);' +
-      'padding-top:.45em;color:var(--gmc-ink-soft);pointer-events:none;';
+      'padding-top:.42em;color:var(--gmc-ink-soft);pointer-events:none;';
     const b = node.querySelector<HTMLElement>('b');
     const span = node.querySelector<HTMLElement>('span');
-    if (b) b.style.cssText = 'font-size:1.35cqw;letter-spacing:.22em;flex:0 0 auto;';
-    if (span) span.style.cssText = 'font-family:var(--gmc-serif);font-size:1.55cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    if (b) b.style.cssText = 'font-size:1.25cqw;letter-spacing:.22em;flex:0 0 auto;';
+    if (span) span.style.cssText = 'font-family:var(--gmc-serif);font-size:1.45cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   } else {
     node.innerHTML = `<b>${escapeHtml(f.kind)}</b><span>“${escapeHtml(f.text)}”</span>`;
     node.style.cssText =
-      'position:absolute;left:7%;right:7%;bottom:6.2%;z-index:4;' +
+      'position:absolute;left:7%;right:7%;bottom:10.7%;z-index:4;' +
       'display:flex;gap:.6em;align-items:baseline;color:var(--gmc-ink-soft);pointer-events:none;';
     const b = node.querySelector<HTMLElement>('b');
     const span = node.querySelector<HTMLElement>('span');
-    if (b) b.style.cssText = 'font-size:1.25cqw;letter-spacing:.2em;flex:0 0 auto;';
-    if (span) span.style.cssText = 'font-family:var(--gmc-serif);font-size:1.5cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    if (b) b.style.cssText = 'font-size:1.2cqw;letter-spacing:.2em;flex:0 0 auto;';
+    if (span) span.style.cssText = 'font-family:var(--gmc-serif);font-size:1.42cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   }
 
   body.appendChild(node);
@@ -78,14 +78,14 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch);
 }
 
-export function installCardFlavorPreview(root: ParentNode = document): () => void {
-  const scan = (node: ParentNode): void => {
+export function installCardFlavorPreview(root: Document | HTMLElement = document): () => void {
+  const scan = (node: Document | HTMLElement): void => {
     if (node instanceof HTMLElement && node.matches('.gmc-card')) enhance(node);
-    node.querySelectorAll?.<HTMLElement>('.gmc-card').forEach(enhance);
+    node.querySelectorAll<HTMLElement>('.gmc-card').forEach(enhance);
   };
 
   scan(root);
-  const target = root instanceof Document ? root.documentElement : root;
+  const target: Node = root instanceof Document ? root.documentElement : root;
   const observer = new MutationObserver((records) => {
     for (const r of records) {
       for (const n of r.addedNodes) {
