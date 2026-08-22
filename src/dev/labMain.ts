@@ -16,8 +16,12 @@
 import { installLabStyles } from './labStyles.ts';
 import { mountDevTools, type DevTab } from './index.ts';
 import { loadPrefs, savePrefs } from './labStore.ts';
+import { installCardFlavorPreview } from './cardFlavorPreview.ts';
 
 installLabStyles();
+// Cards Lab は動的 import なので、後から生成されるカードも MutationObserver で拾う。
+// lite 一覧には付けず、Showcase / 比較だけで文字量を確認する。
+installCardFlavorPreview();
 
 const qs = new URLSearchParams(location.search);
 
