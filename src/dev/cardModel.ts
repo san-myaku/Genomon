@@ -23,6 +23,7 @@
 import type { CatLocus, Phenotype, RarityTier } from '../core/types.ts';
 import { Rng, hashString } from '../core/rng.ts';
 import { PALETTE_BY_ID } from '../core/color.ts';
+import { deriveFlavorText, type FlavorText } from '../game/flavor.ts';
 import { alleleDef, alleleLabel } from '../genetics/loci.ts';
 import { makeName } from '../genetics/naming.ts';
 
@@ -266,6 +267,16 @@ export interface CardFacts {
   certifiedOn: string;
   /** QR プレースホルダに書く将来の URL。 */
   qrPayload: string;
+  /**
+   * カードに刷るフレーバー。
+   *
+   * 【本番と同じ生成を使う】
+   *   ここは版面（文字量・行数・余白）を判断するための場所なので、
+   *   Cards Lab 専用の仮テキストを置くと **本番と違う長さで判断してしまう**。
+   *   Cards Lab には実際の Phenotype があるので、本編と同じ
+   *   `game/flavor.ts` の deriveFlavorText をそのまま通す。
+   */
+  flavor: FlavorText;
 }
 
 /** 対立遺伝子 ID → カードに刷る英字。'none' は「—」にする。 */
@@ -382,5 +393,6 @@ export function deriveCardFacts(pheno: Phenotype, grade: CardGrade): CardFacts {
     paletteLabel: family?.label ?? pheno.palette.family,
     certifiedOn: `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`,
     qrPayload: `genomon.app/g/${certId}`,
+    flavor: deriveFlavorText(pheno),
   };
 }

@@ -104,24 +104,16 @@ export function mountDevTools(host: HTMLElement, opts: DevToolsOpts = {}): Mount
       return;
     }
     // Cards Lab はホログラム用のライブラリと CSS を連れてくるので、
-    // フレーバー版面プレビューも含めてモジュールごと動的 import にする。
-    // 一度も開かなければ取得も MutationObserver の起動もしない。
+    // モジュールごと動的 import にする。一度も開かなければ取得もしない。
     if (!LAZY_TABS.includes(tab)) return;
     pending.add(tab);
     panel.innerHTML = `<p class="hint">Cards Lab を読み込んでいます…</p>`;
-    void Promise.all([import('./cardLab.ts'), import('./cardFlavorPreview.ts')])
-      .then(([{ mountCardLab }, { installCardFlavorPreview }]) => {
+    void import('./cardLab.ts')
+      .then(({ mountCardLab }) => {
         pending.delete(tab);
         if (disposed) return;
         panel.innerHTML = '';
-        const stopFlavor = installCardFlavorPreview(panel);
-        const cardLab = mountCardLab(panel, { toast, setDark });
-        mounts.cards = {
-          dispose() {
-            cardLab.dispose();
-            stopFlavor();
-          },
-        };
+        mounts.cards = mountCardLab(panel, { toast, setDark });
       })
       .catch((err: unknown) => {
         pending.delete(tab);
