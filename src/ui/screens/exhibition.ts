@@ -94,6 +94,7 @@ export function screenExhibition(app: App, host: HTMLElement): Screen {
             extraPills: isAppraised(c)
               ? [`<span class="pill pill--brass">鑑定済み</span>`]
               : [`<span class="pill">${icon('spark')} ${esc(observedRarity(pheno).label)}</span>`],
+            hideRarity: true,
             meta: c.exhibitionCount > 0 ? `出場 ${c.exhibitionCount} 回・最高 ${Math.round(c.bestScore)} 点` : 'はじめての 出場',
           }) +
           (chk.ok

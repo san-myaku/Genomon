@@ -190,6 +190,7 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
           pressed: picked,
           rarity: appraised ? visibleRarity(pheno, 'adult') : null,
           extraPills: extra,
+          hideRarity: true,
           meta: role
             ? `えらばれています（${role}）`
             : `${STAGE_LABEL[c.life.stage]}・${generationLabel(c.generation)}`,

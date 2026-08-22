@@ -184,6 +184,9 @@ export function screenCollection(app: App, host: HTMLElement): Screen {
             href: `#/detail/${encodeURIComponent(c.id)}`,
             rarity: appraised ? visibleRarity(pheno, c.life.stage) : null,
             extraPills: rough,
+            // 卵・幼体は観察の札を出さないので、「？」の札はそのまま残す
+            // （札が 1 枚も無いと、伏せていることすら伝わらない）。
+            hideRarity: rough.length > 0,
             meta: `${STAGE_LABEL[c.life.stage]}・${generationLabel(c.generation)}${c.bestScore > 0 ? `・最高${Math.round(c.bestScore)}点` : ''}`,
           }) +
           `<p class="section__note" style="margin:0;font-size:.76rem">${esc(relationText(c))}</p>` +
