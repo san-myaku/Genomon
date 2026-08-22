@@ -1,15 +1,15 @@
 /**
  * 個体詳細。
  *
- * 【要件】
- *   - 遺伝情報の概要、性格、希少度と理由、特徴一覧。
- *   - 親がいる個体は親子比較（explainInheritance の日本語説明を使う）。
+ * 【鑑定前後の情報差】
+ *   通常の観察で分かるのは、表現型として外から見える特徴と大まかな印象だけ。
+ *   保因・接合状態・全遺伝子座・正確な希少度と理由は鑑定後に初めて開示する。
+ *   これは単なる UI の伏せ字ではなく、「見た目から推測して育種する」期間と
+ *   「検査して設計する」期間を分けるゲームルール。
  *
- * 【ネタバレ防止（最重要）】
- *   rarity / traits は **成体基準** で計算されている。
- *   幼体・卵にそのまま出すと「成体で羽が生える」ことが先に分かってしまうので、
- *   特徴は genetics の visibleTraits(pheno, stage)、
- *   希少度は ui/traits.ts の visibleRarity(pheno, stage) を必ず通す。
+ * 【成長段階のネタバレ防止】
+ *   幼体・卵の特徴は genetics の visibleTraits(pheno, stage) を必ず通す。
+ *   鑑定そのものも成体限定なので、未発達器官を先に知る経路を作らない。
  */
 
 import type { Creature, Phenotype, Stage } from '../../core/types.ts';
@@ -27,10 +27,16 @@ import { PERSONALITY_AXES, RARITY_LABEL, STAGE_LABEL, generationLabel } from '..
 import { rarityMaskNote, traitMaskNote, visibleRarity, visibleTraits } from '../traits.ts';
 import { findReleasedById, recordRelease, releasedAsCreature } from '../releasedLog.ts';
 import {
+  APPRAISAL_COST,
+  appraiseCreature,
+  canAppraise,
   capacityUsed,
   creaturesByStage,
+  deriveGeneticReport,
   findCreature,
   getPhenotype,
+  isAppraised,
+  observedRarity,
   releaseCreature,
   renameCreature,
   CREATURE_NAME_MAX_LENGTH,
@@ -46,16 +52,7 @@ interface ParentView {
 
 /**
  * 見える特徴どうしを突き合わせた比較文（UI 側で組み立てる版）。
- *
- * genetics の explainInheritance を使えないのは 2 つの場合:
- *   1. 親が 1 体しか たどれない
- *      … あちらは **両親そろっている前提**の文（「両親そろって同じ」）を作るので、
- *        片親に流用すると嘘になる。
- *   2. この子が まだ 成体でない
- *      … あちらは Phenotype.parts を直接読む。卵・幼体の Phenotype は
- *        器官の値を **成体基準のまま持っている**（孵化後にそのまま使うため）ので、
- *        そのまま文にすると「成体になると羽が生える」が先に分かってしまう。
- *        ここは必ず visibleTraits(child, stage) を通し、伏せるべきものは比較しない。
+ * 鑑定前はこちらだけを使い、遺伝型を推測できる文を出さない。
  */
 function traitCompareLines(
   child: Phenotype,
@@ -87,6 +84,9 @@ function traitCompareLines(
   return [...same, ...diff].slice(0, max);
 }
 
+const zygosityLabel = (z: 'homozygous' | 'heterozygous'): string =>
+  z === 'homozygous' ? 'HOMO' : 'HET';
+
 export function screenDetail(app: App, host: HTMLElement, params: string[]): Screen {
   const id = params[0] ? decodeURIComponent(params[0]) : (app.state.activeCreatureId ?? '');
   let stopMotion: () => void = () => {};
@@ -108,17 +108,20 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     const pheno = getPhenotype(c, stage);
     const traits = visibleTraits(pheno, stage);
     const rarity = visibleRarity(pheno, stage);
+    const appraised = isAppraised(c);
+    const observed = observedRarity(pheno);
+    const report = appraised && stage === 'adult' ? deriveGeneticReport(c) : null;
 
-    // ── 遺伝情報の概要 ──
+    // ── 観察／鑑定の概要 ──
     const notableCount = traits.filter((t) => t.notable).length;
-    const carrierCount = traits.filter((t) => t.carrier).length;
+    const carrierCount = report?.summary.hiddenAlleles ?? 0;
     const overview = [
       { k: '素体', v: pheno.baseLabel },
       { k: '配色', v: pheno.palette.family ? `${pheno.palette.family}系` : '—' },
       { k: '世代', v: generationLabel(c.generation) },
       { k: 'seed', v: c.seed },
-      { k: 'めずらしい形質', v: stage === 'adult' ? `${notableCount} か所` : '？' },
-      { k: 'かくれて持つ形質', v: `${carrierCount} か所` },
+      { k: '見えている珍しい形質', v: stage === 'adult' ? `${notableCount} か所` : '？' },
+      { k: '潜在形質', v: report ? `${carrierCount} か所` : '未鑑定' },
     ]
       .map(
         (o) =>
@@ -139,16 +142,23 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     }).join('');
 
     // ── 希少度 ──
-    const rarityHtml = rarity
-      ? `<div class="row" style="margin-bottom:var(--sp-2)">` +
-        `<span class="pill rar rar--${rarity.tier}">${icon('spark')} ${esc(RARITY_LABEL[rarity.tier])}</span>` +
-        `<span class="pill">${Math.round(rarity.score)} 点</span></div>` +
-        (rarity.reasons.length > 0
-          ? `<ul class="lines">${rarity.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
-          : `<p class="section__note" style="margin:0">${esc(rarityMaskNote(stage))}</p>`)
-      : `<p class="section__note" style="margin:0">${esc(rarityMaskNote(stage))}</p>`;
+    // 未鑑定では score / tier / reasons を一切出さない。
+    const rarityHtml =
+      report && rarity
+        ? `<div class="row" style="margin-bottom:var(--sp-2)">` +
+          `<span class="pill rar rar--${rarity.tier}">${icon('spark')} ${esc(RARITY_LABEL[rarity.tier])}</span>` +
+          `<span class="pill">${report.exactRarity.score.toFixed(1)} / 100</span>` +
+          `<span class="pill pill--brass">鑑定済み</span></div>` +
+          (report.exactRarity.reasons.length > 0
+            ? `<ul class="lines">${report.exactRarity.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
+            : `<p class="section__note" style="margin:0">希少度を押し上げる特別な要因は記録されていません。</p>`)
+        : stage === 'adult'
+          ? `<div class="row" style="margin-bottom:var(--sp-2)"><span class="pill">${icon('spark')} ${esc(observed.label)}</span></div>` +
+            `<p class="section__note" style="margin:0">${esc(observed.note)} 正確な点数と内訳は鑑定後に開示されます。</p>`
+          : `<p class="section__note" style="margin:0">${esc(rarityMaskNote(stage))}</p>`;
 
     // ── 特徴一覧 ──
+    // carrier は鑑定後だけ。発現している特徴そのものは今までどおり観察できる。
     const traitsHtml =
       traits.length > 0
         ? `<div class="traits">` +
@@ -158,19 +168,70 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
                 `<div class="trait${t.notable ? ' trait--notable' : ''}">` +
                 `<div class="trait__k">${esc(t.label)}${t.notable ? ` ${icon('spark', { scale: 0.8, label: 'めずらしい特徴' })}` : ''}</div>` +
                 `<div class="trait__v">${esc(t.value)}</div>` +
-                (t.carrier ? `<div class="trait__c">かくれて持つ：${esc(t.carrier)}</div>` : '') +
+                (report && t.carrier ? `<div class="trait__c">かくれて持つ：${esc(t.carrier)}</div>` : '') +
                 `</div>`,
             )
             .join('') +
           `</div>`
         : emptyState('egg', ['まだ 分かることが ありません。']);
 
+    // ── 鑑定 ──
+    const availability = canAppraise(app.state, c);
+    const appraisalHtml = report
+      ? `<div class="card card--tight">` +
+        `<div class="row"><span class="pill pill--brass">${icon('helix')} 鑑定済み</span>` +
+        `<span class="pill">CAT ${report.summary.categoricalLoci}</span>` +
+        `<span class="pill">NUM ${report.summary.numericLoci}</span>` +
+        `<span class="pill">HOMO ${report.summary.homozygous}</span>` +
+        `<span class="pill">HET ${report.summary.heterozygous}</span></div>` +
+        `<p class="section__note" style="margin:var(--sp-3) 0 var(--sp-2)">` +
+        `鑑定によって遺伝子が変わったわけではありません。この子が最初から持っていた情報を読み取った記録です。</p>` +
+        `<blockquote style="margin:var(--sp-3) 0 0;padding:var(--sp-3);border-left:3px solid var(--brass);background:var(--paper-2)">` +
+        `<small style="display:block;margin-bottom:var(--sp-1);letter-spacing:.12em">${esc(report.flavor.kind)}</small>` +
+        `${esc(report.flavor.text)}</blockquote>` +
+        `</div>`
+      : stage === 'adult'
+        ? `<div class="card card--tight">` +
+          `<p style="margin-top:0"><strong>外から見えない遺伝情報を調べます。</strong></p>` +
+          `<p class="section__note">鑑定すると、全遺伝子座・ホモ/ヘテロ・潜在形質・正確な希少度と内訳が永久に開示されます。</p>` +
+          `<div class="row"><span class="pill">鑑定料 ${APPRAISAL_COST} コイン</span>` +
+          `<button type="button" class="btn" data-act="appraise"${availability.ok ? '' : ' disabled'}>鑑定に出す</button></div>` +
+          (!availability.ok && availability.reason
+            ? `<p class="section__note" style="margin:var(--sp-2) 0 0">${esc(availability.reason)}</p>`
+            : '') +
+          `</div>`
+        : `<div class="card card--tight"><p class="section__note" style="margin:0">鑑定できるのは 成体になってからです。</p></div>`;
+
+    const geneticReportHtml = report
+      ? `<div class="card card--tight">` +
+        `<details open><summary><strong>カテゴリ遺伝子 ${report.categorical.length} 座</strong> — 両アレルと発現状態</summary>` +
+        `<div class="traits" style="margin-top:var(--sp-3)">` +
+        report.categorical
+          .map((g) =>
+            `<div class="trait${g.hiddenAllele?.notable ? ' trait--notable' : ''}">` +
+            `<div class="trait__k">${esc(g.label)} <span class="pill">${zygosityLabel(g.zygosity)}</span></div>` +
+            `<div class="trait__v">${esc(g.alleles[0].label)} / ${esc(g.alleles[1].label)}</div>` +
+            `<div class="trait__c">発現：${esc(g.expressedLabel)}` +
+            (g.hiddenAllele ? ` ／ 非発現：${esc(g.hiddenAllele.label)}` : '') +
+            (g.coExpressed ? ' ／ 共優性' : '') +
+            `</div></div>`,
+          )
+          .join('') +
+        `</div></details>` +
+        `<details style="margin-top:var(--sp-3)"><summary><strong>数値遺伝子 ${report.numeric.length} 座</strong> — 2値と平均</summary>` +
+        `<div class="traits" style="margin-top:var(--sp-3)">` +
+        report.numeric
+          .map((g) =>
+            `<div class="trait"><div class="trait__k">${esc(g.label)}</div>` +
+            `<div class="trait__v">${g.alleles[0].toFixed(3)} / ${g.alleles[1].toFixed(3)}</div>` +
+            `<div class="trait__c">平均 ${g.mean.toFixed(3)}</div></div>`,
+          )
+          .join('') +
+        `</div></details>` +
+        `</div>`
+      : '';
+
     // ── 親子比較 ──
-    //
-    // 以前は「両親そろっているときだけ」比較を組んでいたので、
-    // 親を 1 体 手放しただけで、本作でいちばん面白いところが丸ごと消えていた。
-    // いまは 手もとの個体 → 森へかえした子の記録 の順にたどり、
-    // 片方しか たどれなくても、たどれた側の列と比較文は必ず出す。
     let compareHtml = '';
     if (c.parents) {
       const names = c.parentNames ?? ['親A', '親B'];
@@ -202,12 +263,10 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
         );
       };
 
-      // 比較文の作り分け。
-      //   両親そろっていて この子も成体 … genetics の explainInheritance（いちばん読み応えがある）
-      //   それ以外                       … UI 側の突き合わせ（片親でも成立し、ネタバレもしない）
       const known = [pa, pb].filter((v) => v.creature !== null);
       let lines: string[] = [];
-      if (known.length === 2 && stage === 'adult') {
+      // 鑑定前は「似ている」を観察するだけ。鑑定後だけ遺伝説明へ進む。
+      if (appraised && known.length === 2 && stage === 'adult') {
         lines = inheritanceHighlights(
           pheno,
           getPhenotype(pa.creature!, 'adult'),
@@ -230,8 +289,8 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
             ? `${v.name} は 森へ かえした子。姿は 標本帳の 記録から よみがえらせています。`
             : `${v.name} は 記録が のこっていないので、姿を 出せません。`,
         );
-      // 成体になる前は、伏せている器官のぶんだけ比べられることが少ない。
       if (stage !== 'adult') notes.push('成体に なると、比べられる ところが もっと 増えます。');
+      if (stage === 'adult' && !appraised) notes.push('鑑定すると、見た目の比較だけでは分からない遺伝情報まで調べられます。');
       const note =
         notes.length === 0
           ? ''
@@ -251,10 +310,6 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     }
 
     // ── 手放す候補の切り替え ──
-    //
-    // 枠が満杯のとき、目標行は「手放す子を えらぶ」でこの画面へ飛ばしてくるが、
-    // 飛び先はその段階の先頭 1 体で固定されていた。
-    // 別の子にするには標本帳を経由するしかなかったので、ここに並べて置く。
     const used = capacityUsed(app.state);
     const full = used[stage] >= app.state.capacity[stage];
     const others = full ? creaturesByStage(app.state, stage).filter((o) => o.id !== c.id) : [];
@@ -271,15 +326,20 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
           `</div>`
         : '';
 
+    const topRarity = appraised && rarity
+      ? rarityPill(rarity, stage)
+      : stage === 'adult'
+        ? `<span class="pill">${icon('spark')} ${esc(observed.label)}</span>`
+        : rarityPill(null, stage);
+
     setHtml(
       host,
       pageHeader(c.name, `${STAGE_LABEL[stage]}・${generationLabel(c.generation)}`, 'glass') +
-        `<div class="row" style="margin-bottom:var(--sp-3)">${stagePill(stage)}${rarityPill(rarity, stage)}` +
+        `<div class="row" style="margin-bottom:var(--sp-3)">${stagePill(stage)}${topRarity}` +
+        (appraised ? `<span class="pill pill--brass">${icon('helix')} 鑑定済み</span>` : '') +
         (c.bestScore > 0 ? `<span class="pill pill--brass">${icon('medal')} 最高 ${Math.round(c.bestScore)} 点</span>` : '') +
         (c.exhibitionCount > 0 ? `<span class="pill">展示 ${c.exhibitionCount} 回</span>` : '') +
         `</div>` +
-        // 手放す操作はここにしか無いので、スクロールせずに届く位置に置く。
-        // 枠が満杯で進行が止まったとき、目標行のボタンがこの画面へ直接飛ばしてくる。
         `<div class="row" style="margin-bottom:var(--sp-3)">` +
         `<button type="button" class="btn btn--sm" data-act="care">育成室で 世話する</button>` +
         `<button type="button" class="btn btn--ghost btn--sm" data-act="rename">名前を 変える</button>` +
@@ -288,15 +348,15 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
         `</div>` +
         switchHtml +
         `<div class="stage stage--detail" style="margin-bottom:var(--sp-4)"><div class="stage__art" data-art></div></div>` +
-        // 親子の比べっこは本作でいちばん面白いところなので、絵のすぐ下に置く。
-        // （以前は全高 5000px 超のいちばん下にあり、ほぼ誰も辿り着けなかった）
         (compareHtml ? section('親子の 比べっこ', compareHtml, undefined, 'pair') : '') +
         section('いまの ようす', `<div class="card card--tight">${gaugesFor(c)}</div>`, undefined, 'chart') +
-        section('遺伝情報の 概要', `<div class="traits">${overview}</div>`, undefined, 'helix') +
+        section(appraised ? '鑑定記録' : '鑑定', appraisalHtml, undefined, 'helix') +
+        section('観察情報の 概要', `<div class="traits">${overview}</div>`, undefined, 'book') +
         section('性格', `<div class="card card--tight"><div class="persona">${persona}</div>` +
           `<p class="section__note" style="margin:var(--sp-2) 0 0">この子は「${esc(pheno.personality.label)}」。${esc(pheno.personality.subLabel)}。</p></div>`, undefined, 'mask') +
-        section('めずらしさ', `<div class="card card--tight">${rarityHtml}</div>`, undefined, 'spark') +
-        section('特徴', traitsHtml, traitMaskNote(stage) || undefined, 'leaf') +
+        section(appraised ? '正確な めずらしさ' : '見た目から分かる めずらしさ', `<div class="card card--tight">${rarityHtml}</div>`, undefined, 'spark') +
+        section('見えている 特徴', traitsHtml, traitMaskNote(stage) || undefined, 'leaf') +
+        (report ? section('全遺伝子レポート', geneticReportHtml, 'この情報は鑑定後だけ表示されます。', 'helix') : '') +
         `<div class="row row--end"><a class="btn btn--ghost" href="#/collection">標本帳へ</a>` +
         `<button type="button" class="btn" data-act="care">育成室で 世話する</button></div>`,
     );
@@ -308,6 +368,37 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       creature: c,
       reducedMotion: app.reducedMotion,
     });
+  }
+
+  async function doAppraise(c: Creature): Promise<void> {
+    const availability = canAppraise(app.state, c);
+    if (!availability.ok) {
+      sfx.play('deny');
+      toast(availability.reason ?? 'いまは 鑑定できません。', 'warn');
+      return;
+    }
+
+    const ok = await confirmDialog(
+      `${c.name} を 鑑定に出しますか？`,
+      `<p><strong>${esc(c.name)}</strong> の遺伝情報を正式に調べます。</p>` +
+        `<p>鑑定料は <strong>${APPRAISAL_COST} コイン</strong>です。</p>` +
+        `<p>鑑定後は、全遺伝子座・ホモ/ヘテロ・潜在形質・正確な希少度と内訳が、この個体の記録として永久に開示されます。</p>`,
+      '鑑定する',
+    );
+    if (!ok) return;
+
+    const result = appraiseCreature(app.state, c.id);
+    if (!result.ok) {
+      sfx.play('deny');
+      toast(result.reason ?? '鑑定できませんでした。', 'warn');
+      return;
+    }
+
+    sfx.play('success');
+    app.save('個体鑑定');
+    toast(`${c.name} の 鑑定が完了しました。遺伝情報が開示されました。`, 'good', 4600);
+    app.rerender();
+    render();
   }
 
   async function doRename(c: Creature): Promise<void> {
@@ -344,14 +435,6 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     render();
   }
 
-  /**
-   * この子を手放す。
-   *
-   * 枠（各段階 3 体）が満杯になると孵化・成体化が止まり、
-   * 手放す以外に抜ける道が無い。その唯一の操作がここ。
-   * 拒否の条件（残り 2 体以下では手放せない）は game 側が持っているので、
-   * 判定は releaseCreature に任せ、返ってきた理由をそのまま見せる。
-   */
   async function doRelease(c: Creature): Promise<void> {
     const ok = await confirmDialog(
       `${c.name} を 手放しますか？`,
@@ -365,7 +448,6 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     );
     if (!ok) return;
 
-    // 記録は「手放す前」に取る。releaseCreature を通ると state から消えてしまう。
     const snapshot = { ...c };
     const r = releaseCreature(app.state, c.id);
     if (!r.ok) {
@@ -379,7 +461,6 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     }
 
     sfx.play('back');
-    // 観察帳から消さない。姿（遺伝情報）ごと UI 側の記録に残す。
     recordRelease(snapshot);
     app.save('手放し');
     toast(`${c.name} を 森へ かえしました。記録は 標本帳に のこります。`, 'info', 4600);
@@ -393,6 +474,13 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       app.state.activeCreatureId = id;
       app.markDirty();
       app.go('/nursery');
+      return;
+    }
+    if (act === 'appraise') {
+      const c = findCreature(app.state, id);
+      if (!c) return;
+      sfx.play('tap');
+      void doAppraise(c);
       return;
     }
     if (act === 'release') {
