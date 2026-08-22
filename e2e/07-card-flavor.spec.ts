@@ -1,10 +1,20 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+async function openCards(page: Page): Promise<void> {
+  await page.goto('/lab.html?tab=cards');
+  await page.waitForSelector('#cards-showcase .gmc-flavor-preview', { timeout: 30_000 });
+}
+
+async function openSettings(page: Page): Promise<void> {
+  const fold = page.locator('#cards-fold-settings');
+  if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) {
+    await fold.locator('> summary').click();
+  }
+}
 
 test.describe('Cards Lab — フレーバーテキスト', () => {
   test('Showcase に個体固有の一文が出る', async ({ page }) => {
-    await page.goto('/lab.html?tab=cards');
-    await page.waitForSelector('#cards-showcase .holo-card', { timeout: 30_000 });
-
+    await openCards(page);
     const card = page.locator('#cards-showcase .gmc-card');
     await expect(card.locator('.gmc-flavor-preview')).toHaveCount(1);
     const text = (await card.locator('.gmc-flavor-preview').textContent())?.trim() ?? '';
@@ -12,8 +22,8 @@ test.describe('Cards Lab — フレーバーテキスト', () => {
   });
 
   test('同じ seed なら再描画しても同じ一文になる', async ({ page }) => {
-    await page.goto('/lab.html?tab=cards');
-    await page.waitForSelector('#cards-showcase .gmc-flavor-preview', { timeout: 30_000 });
+    await openCards(page);
+    await openSettings(page);
     const first = (await page.locator('#cards-showcase .gmc-flavor-preview').textContent())?.trim();
 
     await page.locator('[data-act="regen"]').click();
@@ -23,23 +33,21 @@ test.describe('Cards Lab — フレーバーテキスト', () => {
   });
 
   test('個体をめくると一文も変わり得る', async ({ page }) => {
-    await page.goto('/lab.html?tab=cards');
-    await page.waitForSelector('#cards-showcase .gmc-flavor-preview', { timeout: 30_000 });
+    await openCards(page);
+    await openSettings(page);
     const seen = new Set<string>();
 
     for (let i = 0; i < 8; i++) {
       const text = (await page.locator('#cards-showcase .gmc-flavor-preview').textContent())?.trim() ?? '';
       seen.add(text);
       await page.locator('[data-act="random"]').click();
-      await page.waitForTimeout(80);
       await page.waitForSelector('#cards-showcase .gmc-flavor-preview', { timeout: 30_000 });
     }
     expect(seen.size).toBeGreaterThan(1);
   });
 
   test('lite の個体一覧にはフレーバーDOMを増やさない', async ({ page }) => {
-    await page.goto('/lab.html?tab=cards');
-    await page.waitForSelector('#cards-showcase .holo-card', { timeout: 30_000 });
+    await openCards(page);
 
     const fold = page.locator('#cards-fold-gallery');
     if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) {
