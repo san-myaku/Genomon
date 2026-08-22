@@ -21,7 +21,10 @@ export { mountVisualLab } from './visualLab.ts';
 export { mountDevMode } from './devMode.ts';
 export type { Mounted } from './visualLab.ts';
 
-export type DevTab = 'lab' | 'dev';
+export type DevTab = 'lab' | 'dev' | 'cards';
+
+/** 遅延読み込みするタブ（初めて開いたときだけ chunk を取りに行く）。 */
+const LAZY_TABS: readonly DevTab[] = ['cards'];
 
 export interface DevToolsOpts {
   /** 最初に開くタブ。 */
@@ -46,11 +49,13 @@ export function mountDevTools(host: HTMLElement, opts: DevToolsOpts = {}): Mount
         `<nav class="lab-tabs" role="tablist">` +
         `<button class="lab-tab" role="tab" data-tab="lab">Visual Lab</button>` +
         `<button class="lab-tab" role="tab" data-tab="dev">開発者モード</button>` +
+        `<button class="lab-tab" role="tab" data-tab="cards">Cards Lab</button>` +
         `</nav></header>`
       : '') +
     `<div class="lab-body">` +
     `<div class="lab-panel" id="lab-panel-lab" role="tabpanel"></div>` +
     `<div class="lab-panel" id="lab-panel-dev" role="tabpanel" hidden></div>` +
+    `<div class="lab-panel" id="lab-panel-cards" role="tabpanel" hidden></div>` +
     `</div>` +
     `<div id="lab-toast" aria-live="polite"></div>`;
 
@@ -71,11 +76,15 @@ export function mountDevTools(host: HTMLElement, opts: DevToolsOpts = {}): Mount
   const panels: Record<DevTab, HTMLElement | null> = {
     lab: host.querySelector<HTMLElement>('#lab-panel-lab'),
     dev: host.querySelector<HTMLElement>('#lab-panel-dev'),
+    cards: host.querySelector<HTMLElement>('#lab-panel-cards'),
   };
   const mounts: Partial<Record<DevTab, Mounted>> = {};
+  /** 読み込み中のタブ。連打で 2 回 mount しないための番人。 */
+  const pending = new Set<DevTab>();
+  let disposed = false;
 
   function activate(tab: DevTab): void {
-    for (const key of ['lab', 'dev'] as DevTab[]) {
+    for (const key of ['lab', 'dev', 'cards'] as DevTab[]) {
       const p = panels[key];
       if (p) p.hidden = key !== tab;
     }
@@ -84,16 +93,39 @@ export function mountDevTools(host: HTMLElement, opts: DevToolsOpts = {}): Mount
     }
     // 初回に開いたときだけ作る（開かないタブの重い生成を走らせない）。
     const panel = panels[tab];
-    if (panel && !mounts[tab]) {
-      mounts[tab] = tab === 'lab' ? mountVisualLab(panel, { toast, setDark }) : mountDevMode(panel, { toast });
+    if (!panel || mounts[tab] || pending.has(tab)) return;
+
+    if (tab === 'lab') {
+      mounts.lab = mountVisualLab(panel, { toast, setDark });
+      return;
     }
+    if (tab === 'dev') {
+      mounts.dev = mountDevMode(panel, { toast });
+      return;
+    }
+    // Cards Lab はホログラム用のライブラリと CSS を連れてくるので、
+    // モジュールごと動的 import にする。一度も開かなければ取得もしない。
+    if (!LAZY_TABS.includes(tab)) return;
+    pending.add(tab);
+    panel.innerHTML = `<p class="hint">Cards Lab を読み込んでいます…</p>`;
+    void import('./cardLab.ts')
+      .then(({ mountCardLab }) => {
+        pending.delete(tab);
+        if (disposed) return;
+        panel.innerHTML = '';
+        mounts.cards = mountCardLab(panel, { toast, setDark });
+      })
+      .catch((err: unknown) => {
+        pending.delete(tab);
+        panel.innerHTML = `<p class="warn">Cards Lab を読み込めませんでした: ${String(err)}</p>`;
+      });
   }
 
   const onTabClick = (ev: Event): void => {
     const t = (ev.target as HTMLElement | null)?.closest<HTMLElement>('[data-tab]');
     if (!t) return;
     const tab = t.dataset.tab;
-    if (tab === 'lab' || tab === 'dev') activate(tab);
+    if (tab === 'lab' || tab === 'dev' || tab === 'cards') activate(tab);
   };
   host.addEventListener('click', onTabClick);
 
@@ -101,6 +133,7 @@ export function mountDevTools(host: HTMLElement, opts: DevToolsOpts = {}): Mount
 
   return {
     dispose() {
+      disposed = true;
       host.removeEventListener('click', onTabClick);
       for (const m of Object.values(mounts)) m?.dispose();
     },

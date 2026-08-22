@@ -7,7 +7,7 @@
  * 本番ビルドにこのページは含まれない ＝ 配布物に開発ツールが混ざらない。
  *
  * URL パラメータ:
- *   ?tab=lab|dev   開くタブ（既定 lab）
+ *   ?tab=lab|dev|cards  開くタブ（既定 lab）
  *   ?seed=XXXX     Visual Lab の seed を上書きして開く
  *   ?stage=egg|juvenile|adult
  *   ?bg=light|dark
@@ -35,10 +35,15 @@ if (seed || stage || bg) {
 }
 
 const tabParam = qs.get('tab');
-const tab: DevTab = tabParam === 'dev' ? 'dev' : 'lab';
+const tab: DevTab = tabParam === 'dev' ? 'dev' : tabParam === 'cards' ? 'cards' : 'lab';
 
 const root = document.getElementById('lab');
 if (root) {
   mountDevTools(root, { tab });
-  document.title = tab === 'dev' ? 'ゲノモン 開発者モード' : 'ゲノモン Visual Lab';
+  document.title =
+    tab === 'dev'
+      ? 'ゲノモン 開発者モード'
+      : tab === 'cards'
+        ? 'ゲノモン Cards Lab'
+        : 'ゲノモン Visual Lab';
 }

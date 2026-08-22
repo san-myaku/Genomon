@@ -272,7 +272,11 @@ input[type=text],input[type=number],select{min-height:36px}
   .lab-hdr{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:9px 10px;gap:7px 8px}
   .lab-hdr h1{font-size:14px}
   .lab-hdr>.hint{grid-column:1/-1;grid-row:2;font-size:10px}
-  .lab-tabs{grid-column:1/-1;grid-row:3;display:grid;grid-template-columns:1fr 1fr;margin:0}
+  /* タブは 3 つ（Visual Lab / 開発者モード / Cards Lab）。2 列だと 3 つ目が
+     折り返してヘッダが 1 行ぶん高くなり、スマホでは本文（Cards Lab では
+     カードそのもの）が画面外へ押し出される。3 列に収める。 */
+  .lab-tabs{grid-column:1/-1;grid-row:3;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0}
+  .lab-tab{padding-inline:6px;font-size:11.5px}
   .lab-tab{width:100%;min-height:40px}
   .lab-body{padding:12px 10px 72px}
   .lab-card{padding:13px 12px;margin-bottom:13px;border-radius:14px}
