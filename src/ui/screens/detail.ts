@@ -13,12 +13,13 @@
  */
 
 import type { Creature, Phenotype, Stage } from '../../core/types.ts';
+import type { CategoricalGeneReport } from '../gameApi.ts';
 import { icon } from '../icons.ts';
 import { inheritanceHighlights } from '../../genetics/similarity.ts';
 import { sfx } from '../../audio/index.ts';
 import type { App, Screen } from '../app.ts';
 import { pageHeader, section } from '../app.ts';
-import { $, delegate, esc, setHtml } from '../dom.ts';
+import { $, confetti, delegate, esc, setHtml } from '../dom.ts';
 import { mountCreature, thumbSvg } from '../creatureView.ts';
 import { gaugesFor, emptyState, rarityPill, stagePill } from '../components/bits.ts';
 import { confirmDialog, openDialog } from '../components/dialog.ts';
@@ -32,6 +33,7 @@ import {
   canAppraise,
   capacityUsed,
   creaturesByStage,
+  deriveFlavorText,
   deriveGeneticReport,
   findCreature,
   getPhenotype,
@@ -87,6 +89,23 @@ function traitCompareLines(
 const zygosityLabel = (z: 'homozygous' | 'heterozygous'): string =>
   z === 'homozygous' ? 'HOMO' : 'HET';
 
+/**
+ * レポートの並び順。
+ *
+ * 【なぜ並べ替えるのか】
+ *   26 座を カタログ順に そのまま出すと、`結晶 HOMO なし/なし` のような
+ *   「何も起きていない行」と、`耳先色 HET なし/みみさき色` のような
+ *   **次の世代に効く行** が同じ重さで並ぶ。260 行ぶん目で探すのは
+ *   レポートではなく資料。読む順を、育種に効く順にする。
+ */
+function rowRank(g: CategoricalGeneReport): number {
+  if (g.hiddenAllele?.notable) return 0; // 珍しい形質を隠して持っている＝いちばん価値がある
+  if (g.suppressed) return 1;            // 持っているのに姿に出ていない
+  if (g.coExpressed) return 2;           // 両方が混ざって出ている
+  if (g.hiddenAllele) return 3;          // ふつうの保因
+  return 4;                              // ホモ接合＝この座はもう固定されている
+}
+
 export function screenDetail(app: App, host: HTMLElement, params: string[]): Screen {
   const id = params[0] ? decodeURIComponent(params[0]) : (app.state.activeCreatureId ?? '');
   let stopMotion: () => void = () => {};
@@ -111,6 +130,12 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     const appraised = isAppraised(c);
     const observed = observedRarity(pheno);
     const report = appraised && stage === 'adult' ? deriveGeneticReport(c) : null;
+    // 【フレーバーは鑑定と関係なく出す】
+    //   これは遺伝情報ではなく、その個体の外側に世界が続いていることを見せる
+    //   観察記録。鑑定の報酬にしてしまうと、いちばん character の出る一文が
+    //   「お金を払うまで読めないもの」になり、育てている間の画面が乾いてしまう。
+    //   成体だけに限るのは、文が成体の姿（毛・発光・大きさ）を前提にしているため。
+    const flavor = stage === 'adult' ? deriveFlavorText(pheno) : null;
 
     // ── 観察／鑑定の概要 ──
     const notableCount = traits.filter((t) => t.notable).length;
@@ -180,45 +205,92 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     const appraisalHtml = report
       ? `<div class="card card--tight">` +
         `<div class="row"><span class="pill pill--brass">${icon('helix')} 鑑定済み</span>` +
-        `<span class="pill">CAT ${report.summary.categoricalLoci}</span>` +
-        `<span class="pill">NUM ${report.summary.numericLoci}</span>` +
-        `<span class="pill">HOMO ${report.summary.homozygous}</span>` +
-        `<span class="pill">HET ${report.summary.heterozygous}</span></div>` +
-        `<p class="section__note" style="margin:var(--sp-3) 0 var(--sp-2)">` +
+        `<span class="pill">遺伝子座 ${report.summary.categoricalLoci + report.summary.numericLoci}</span>` +
+        `<span class="pill">かくれて持つ形質 ${report.summary.hiddenAlleles}</span></div>` +
+        `<p class="section__note" style="margin:var(--sp-3) 0 0">` +
         `鑑定によって遺伝子が変わったわけではありません。この子が最初から持っていた情報を読み取った記録です。</p>` +
-        `<blockquote style="margin:var(--sp-3) 0 0;padding:var(--sp-3);border-left:3px solid var(--brass);background:var(--paper-2)">` +
-        `<small style="display:block;margin-bottom:var(--sp-1);letter-spacing:.12em">${esc(report.flavor.kind)}</small>` +
-        `${esc(report.flavor.text)}</blockquote>` +
         `</div>`
       : stage === 'adult'
         ? `<div class="card card--tight">` +
-          `<p style="margin-top:0"><strong>外から見えない遺伝情報を調べます。</strong></p>` +
-          `<p class="section__note">鑑定すると、全遺伝子座・ホモ/ヘテロ・潜在形質・正確な希少度と内訳が永久に開示されます。</p>` +
+          `<p style="margin-top:0"><strong>この子が かくれて持っている ものを 調べます。</strong></p>` +
+          `<p class="section__note">見た目に出ている形質は、この子が持つ遺伝子の半分でしかありません。` +
+          `鑑定すると、もう半分（かくれて持つ形質）・ホモ/ヘテロ・正確な希少度と内訳が、永久に開示されます。</p>` +
+          `<p class="section__note">交配の 遺伝予測も、両親を 鑑定して はじめて 出せます。</p>` +
           `<div class="row"><span class="pill">鑑定料 ${APPRAISAL_COST} コイン</span>` +
-          `<button type="button" class="btn" data-act="appraise"${availability.ok ? '' : ' disabled'}>鑑定に出す</button></div>` +
+          `<button type="button" class="btn btn--brass" data-act="appraise"${availability.ok ? '' : ' disabled'}>` +
+          `${icon('helix')} 鑑定に出す</button></div>` +
           (!availability.ok && availability.reason
             ? `<p class="section__note" style="margin:var(--sp-2) 0 0">${esc(availability.reason)}</p>`
             : '') +
           `</div>`
         : `<div class="card card--tight"><p class="section__note" style="margin:0">鑑定できるのは 成体になってからです。</p></div>`;
 
+    const flavorHtml = flavor
+      ? `<div class="card card--tight">` +
+        `<blockquote style="margin:0;padding:var(--sp-3);border-left:3px solid var(--brass);background:var(--paper-2)">` +
+        `<small style="display:block;margin-bottom:var(--sp-1);letter-spacing:.12em;color:var(--mid)">${esc(flavor.kind)}</small>` +
+        `${esc(flavor.text)}</blockquote></div>`
+      : '';
+
+    // ── 全遺伝子レポート ───────────────────────────────
+    //
+    // 【読む順を、育種に効く順にする】
+    //   26 + 24 座をカタログ順に並べると、`結晶 HOMO なし/なし` のような
+    //   何も起きていない行と、`耳先色 HET なし/みみさき色` のような
+    //   次の世代に効く行が同じ重さで並ぶ。まず「見どころ」を数行にまとめ、
+    //   そのあと全座を注目順で出す。数値座は既定で畳む（読む頻度が低い）。
+    const notableHidden = report ? report.categorical.filter((g) => g.hiddenAllele?.notable) : [];
+    const suppressedRows = report ? report.categorical.filter((g) => g.suppressed) : [];
+
+    const highlights: string[] = [];
+    if (notableHidden.length > 0) {
+      highlights.push(
+        `<strong>めずらしい形質を ${notableHidden.length} つ かくれて持っています。</strong>` +
+          notableHidden.map((g) => `${esc(g.label)}の「${esc(g.hiddenAllele!.label)}」`).join('、') +
+          '。いまは姿に出ていませんが、交配で子に出ることがあります。',
+      );
+    }
+    for (const g of suppressedRows) {
+      highlights.push(
+        `${esc(g.label)}は「${esc(g.expressedLabel)}」が出ているはずですが、` +
+          `姿は「${esc(g.suppressed!.label)}」です。${esc(g.suppressed!.note)}`,
+      );
+    }
+    if (report && report.summary.heterozygous === 0) {
+      highlights.push('すべての座がホモ接合です。この子の形質は、そのまま子へ伝わりやすい系統です。');
+    }
+
     const geneticReportHtml = report
       ? `<div class="card card--tight">` +
-        `<details open><summary><strong>カテゴリ遺伝子 ${report.categorical.length} 座</strong> — 両アレルと発現状態</summary>` +
+        `<p class="section__note" style="margin:0 0 var(--sp-3)">` +
+        `<strong>HOMO</strong>＝同じ形質を 2 つ持っている（子にも必ず渡す）。` +
+        `<strong>HET</strong>＝ちがう形質を 1 つずつ持っていて、片方だけが姿に出ている。` +
+        `出ていない方が「かくれて持つ形質」で、交配で子に出ることがあります。</p>` +
+        (highlights.length > 0
+          ? `<ul class="lines" style="margin:0 0 var(--sp-3)">${highlights.map((h) => `<li>${h}</li>`).join('')}</ul>`
+          : `<p class="section__note" style="margin:0 0 var(--sp-3)">かくれて持つ めずらしい形質は ありませんでした。</p>`) +
+        `<details open><summary><strong>すべての形質 ${report.categorical.length} 座</strong>` +
+        `（HOMO ${report.summary.homozygous} ／ HET ${report.summary.heterozygous}）</summary>` +
         `<div class="traits" style="margin-top:var(--sp-3)">` +
-        report.categorical
-          .map((g) =>
+        [...report.categorical]
+          .map((g, i) => ({ g, i }))
+          .sort((a, b) => rowRank(a.g) - rowRank(b.g) || a.i - b.i)
+          .map(({ g }) =>
             `<div class="trait${g.hiddenAllele?.notable ? ' trait--notable' : ''}">` +
             `<div class="trait__k">${esc(g.label)} <span class="pill">${zygosityLabel(g.zygosity)}</span></div>` +
             `<div class="trait__v">${esc(g.alleles[0].label)} / ${esc(g.alleles[1].label)}</div>` +
-            `<div class="trait__c">発現：${esc(g.expressedLabel)}` +
-            (g.hiddenAllele ? ` ／ 非発現：${esc(g.hiddenAllele.label)}` : '') +
-            (g.coExpressed ? ' ／ 共優性' : '') +
+            `<div class="trait__c">出ている：${esc(g.expressedLabel)}` +
+            (g.hiddenAllele
+              ? ` ／ かくれて持つ：${esc(g.hiddenAllele.label)}${g.hiddenAllele.notable ? '（めずらしい）' : ''}`
+              : '') +
+            (g.coExpressed ? ' ／ 両方が混ざって出ている' : '') +
+            (g.suppressed ? `<br>姿には出ていません：${esc(g.suppressed.note)}` : '') +
             `</div></div>`,
           )
           .join('') +
         `</div></details>` +
-        `<details style="margin-top:var(--sp-3)"><summary><strong>数値遺伝子 ${report.numeric.length} 座</strong> — 2値と平均</summary>` +
+        `<details style="margin-top:var(--sp-3)"><summary><strong>数で決まる形質 ${report.numeric.length} 座</strong>` +
+        `（大きさ・色あい・性格など。2 つの値の平均が姿に出ます）</summary>` +
         `<div class="traits" style="margin-top:var(--sp-3)">` +
         report.numeric
           .map((g) =>
@@ -350,8 +422,9 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
         `<div class="stage stage--detail" style="margin-bottom:var(--sp-4)"><div class="stage__art" data-art></div></div>` +
         (compareHtml ? section('親子の 比べっこ', compareHtml, undefined, 'pair') : '') +
         section('いまの ようす', `<div class="card card--tight">${gaugesFor(c)}</div>`, undefined, 'chart') +
+        (flavorHtml ? section('観察ノート', flavorHtml, undefined, 'book') : '') +
         section(appraised ? '鑑定記録' : '鑑定', appraisalHtml, undefined, 'helix') +
-        section('観察情報の 概要', `<div class="traits">${overview}</div>`, undefined, 'book') +
+        section('観察情報の 概要', `<div class="traits">${overview}</div>`, undefined, 'chart') +
         section('性格', `<div class="card card--tight"><div class="persona">${persona}</div>` +
           `<p class="section__note" style="margin:var(--sp-2) 0 0">この子は「${esc(pheno.personality.label)}」。${esc(pheno.personality.subLabel)}。</p></div>`, undefined, 'mask') +
         section(appraised ? '正確な めずらしさ' : '見た目から分かる めずらしさ', `<div class="card card--tight">${rarityHtml}</div>`, undefined, 'spark') +
@@ -396,9 +469,49 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
 
     sfx.play('success');
     app.save('個体鑑定');
-    toast(`${c.name} の 鑑定が完了しました。遺伝情報が開示されました。`, 'good', 4600);
     app.rerender();
     render();
+
+    // ── 開示の瞬間を作る ────────────────────────────────
+    //
+    // 【トーストだけでは足りない】
+    //   鑑定は 160 コインを払う・一度きり・取り消せない操作で、この機能の中心。
+    //   それがトースト 1 行で終わると、押した瞬間には何も起きず、
+    //   下へスクロールして初めて表が増えていることに気づく。
+    //   払ったものが何に化けたのかを、その場で 1 枚に見せる。
+    const r = result.report;
+    if (r) {
+      const notable = r.categorical.filter((g) => g.hiddenAllele?.notable);
+      const lines: string[] = [];
+      lines.push(
+        `<div class="row" style="margin-bottom:var(--sp-3)">` +
+          `<span class="pill rar rar--${r.exactRarity.tier}">${esc(RARITY_LABEL[r.exactRarity.tier])}</span>` +
+          `<span class="pill">めずらしさ ${r.exactRarity.score.toFixed(1)} / 100</span>` +
+          `<span class="pill">かくれて持つ形質 ${r.summary.hiddenAlleles}</span></div>`,
+      );
+      lines.push(
+        notable.length > 0
+          ? `<p><strong>めずらしい形質を ${notable.length} つ、かくれて持っていました。</strong><br>` +
+            notable.map((g) => `${esc(g.label)}の「${esc(g.hiddenAllele!.label)}」`).join('、') +
+            `</p>`
+          : `<p>かくれて持つ めずらしい形質は ありませんでした。姿に出ているものが、この子のすべてです。</p>`,
+      );
+      if (r.exactRarity.reasons.length > 0) {
+        lines.push(`<ul class="lines">${r.exactRarity.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`);
+      }
+      lines.push(
+        `<p class="section__note">この記録は永久に残ります。交配の相手も鑑定すれば、子に出る形質を予測できます。</p>`,
+      );
+      // 紙吹雪はランクの高い個体だけ（毎回だと「特別」が薄まる）。
+      if (r.exactRarity.tier === 'rare' || r.exactRarity.tier === 'precious') confetti(2200);
+      await openDialog({
+        title: `${c.name} の 鑑定結果`,
+        bodyHtml: lines.join(''),
+        icon: 'helix',
+        actions: [{ label: 'レポートを見る', value: 'ok', kind: 'primary', cancel: true }],
+      });
+    }
+    toast(`${c.name} の 鑑定が完了しました。`, 'good', 3600);
   }
 
   async function doRename(c: Creature): Promise<void> {
