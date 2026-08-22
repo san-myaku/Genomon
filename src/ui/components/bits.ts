@@ -51,7 +51,13 @@ export function gaugesFor(c: Creature): string {
 /** 希少度ピル。伏せる段階では「？」を出す。 */
 export function rarityPill(rarity: Rarity | null, stage: Stage): string {
   if (!rarity) {
-    return `<span class="pill" title="${stage === 'egg' ? 'たまごのうちは分かりません' : '成体になると分かります'}">${icon('spark')} めずらしさ ？</span>`;
+    const why =
+      stage === 'egg'
+        ? 'たまごのうちは分かりません'
+        : stage === 'juvenile'
+          ? '成体になると、見た目から少し分かるようになります'
+          : '正確な希少度は鑑定すると分かります';
+    return `<span class="pill" title="${esc(why)}">${icon('spark')} めずらしさ ？</span>`;
   }
   return `<span class="pill rar rar--${rarity.tier}">${icon('spark')} ${esc(RARITY_LABEL[rarity.tier])}</span>`;
 }
