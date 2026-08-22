@@ -11,7 +11,8 @@ import { lighten, darken, hexToHsl, hslToHex, mix } from '../../core/color.ts';
 import { clamp, lerp, type Rng } from '../../core/rng.ts';
 import { Z, type DrawCtx, type PartOut } from '../ctx.ts';
 import { GROUND_Y } from '../geom.ts';
-import { TAU, circle, ellipse, n, path, pathClosed, pathOpen, polyPath, rad, url, type Vec } from '../svg.ts';
+import { TAU, circle, ellipse, n, path, pathClosed, pathOpen, polyPath, rad, url, type StrokeOpts, type Vec } from '../svg.ts';
+import { coatOwnsOutline } from './coat.ts';
 import { faceCoreOf } from './faceLayout.ts';
 
 /** 本体シルエットの clipPath を登録して id を返す。 */
@@ -235,6 +236,13 @@ export function buildBody(ctx: DrawCtx): PartOut[] {
 
   // ── 本体の塗り ────────────────────────────────────────
   const grad = bodyGradient(ctx);
+  /**
+   * もこもこ（coat=fuzz）は房そのものが輪郭になる。
+   * ここで体の輪郭も引くと **房の内側にもう 1 本なめらかな線**が出て、
+   * 人はその内側の線を本体の形として読み、房を「縁の飾り」と見る。
+   * 実測でどの個体も「縁をピンキングばさみで切った紙」に見えていた。
+   */
+  const furOutline = coatOwnsOutline(ctx.parts.coat);
 
   out.push({
     id: 'body',
@@ -242,8 +250,7 @@ export function buildBody(ctx: DrawCtx): PartOut[] {
     svg: path(shape.d, {
       fill: grad,
       fillOpacity: colors.bodyOpacity,
-      stroke: colors.inkPaint,
-      width: ctx.strokeW,
+      ...(furOutline ? {} : { stroke: colors.inkPaint, width: ctx.strokeW }),
       linejoin: 'round',
     }),
     anchor: { id: 'body', x: shape.cx, y: (shape.topY + shape.botY) / 2, angle: 0, scale: 1 },
@@ -294,12 +301,15 @@ export function buildBody(ctx: DrawCtx): PartOut[] {
   if (tex) out.push(tex);
 
   // ── 輪郭の描き直し（模様・質感の上から）────────────────
-  out.push({
-    id: 'outline',
-    z: Z.OUTLINE,
-    svg: path(shape.d, { stroke: colors.inkPaint, width: ctx.strokeW, linejoin: 'round' }),
-    bbox: shape.box,
-  });
+  //   もこもこのときは引かない（上の `furOutline` を参照）。
+  if (!furOutline) {
+    out.push({
+      id: 'outline',
+      z: Z.OUTLINE,
+      svg: path(shape.d, { stroke: colors.inkPaint, width: ctx.strokeW, linejoin: 'round' }),
+      bbox: shape.box,
+    });
+  }
 
   // ── 幽霊型は裾を薄く抜いて浮遊感を出す ──────────────────
   if (shape.base === 'yurei') {
@@ -688,6 +698,28 @@ export function rootShade(ctx: DrawCtx, x: number, y: number, w: number, lean = 
  *   幽霊型   … 内側から発する淡い光と、裾に向かう縦の流れ。
  *   スライム型 … 体内に沈む核と、底に溜まった濃い層、上面の水滴ハイライト。
  */
+/**
+ * 輪郭に沿って引く「縁の効果」（艶・締め・屈折・にじみ）。
+ *
+ * 【もこもこのときだけ扱いを変える理由 — 実測】
+ *   房が輪郭を担う個体（`coatOwnsOutline`）では、体の輪郭に沿った線が
+ *   そのまま **2 本目の輪郭** として読まれる。房の内側になめらかな線が
+ *   出た瞬間、人はそちらを本体の形と見て、房を「縁に付けた飾り」と解釈する
+ *   （実測 `HG8G-W7HU`: こうぶつの 1.4px の淡い線が内側の輪郭に見えていた）。
+ *
+ *   最初は「細い線だけ引かない／太い帯は残す」で試したが、**残した帯が
+ *   そのまま体の輪郭を描き直していた**（実測 `HG8G-W7HU`: すりガラスの
+ *   白い帯が、房の内側になめらかな縁として出ていた）。太さに関わらず
+ *   輪郭に沿う効果は全部やめる。
+ *
+ *   質感の見分けは、縁の帯ではなく **面の中身**（粒・霞・多角形・点光沢）が
+ *   担っている。毛に覆われた体の縁が見えないのは、むしろ自然でもある。
+ */
+function rimPath(ctx: DrawCtx, o: StrokeOpts): string {
+  if (coatOwnsOutline(ctx.parts.coat)) return '';
+  return path(ctx.shape.d, o);
+}
+
 function buildBaseAccent(ctx: DrawCtx): PartOut | null {
   const { shape, colors } = ctx;
   const clip = ctx.bodyClip;
@@ -800,7 +832,7 @@ function buildBaseAccent(ctx: DrawCtx): PartOut | null {
       clip,
       core: 0.4,
     });
-    s += path(shape.d, { stroke: mix(colors.body, colors.bodyDark, 0.6), width: 5, opacity: 0.2, clip });
+    s += rimPath(ctx, { stroke: mix(colors.body, colors.bodyDark, 0.6), width: 5, opacity: 0.2, clip });
   }
 
   // ── 無彩色（すみ）の輪郭側の締め ──────────────────────
@@ -810,13 +842,13 @@ function buildBaseAccent(ctx: DrawCtx): PartOut | null {
   if (colors.family === 'ash') {
     const bl = hexToHsl(colors.body).l;
     const strength = clamp((bl - 52) / 26, 0, 1);
-    s += path(shape.d, {
+    s += rimPath(ctx, {
       stroke: hslToHex(228, 10, clamp(bl - 20, 12, 58)),
       width: 6.5,
       opacity: 0.16 + strength * 0.2,
       clip,
     });
-    s += path(shape.d, {
+    s += rimPath(ctx, {
       stroke: hslToHex(228, 12, clamp(bl - 30, 8, 46)),
       width: 2.6,
       opacity: 0.12 + strength * 0.16,
@@ -946,7 +978,7 @@ function buildTexture(ctx: DrawCtx): PartOut | null {
       if (full) {
         const f = softBlur(ctx, 'frostf', 3.4);
         s += `<g clip-path="${url(clip)}" filter="${url(f)}">`;
-        s += path(shape.d, { stroke: '#ffffff', width: 12, opacity: 0.46 * veilDown });
+        s += rimPath(ctx, { stroke: '#ffffff', width: 12, opacity: 0.46 * veilDown });
         s += ellipse(cx, shape.topY + H * 0.36, shape.halfW * 0.72, H * 0.28, {
           fill: '#ffffff',
           opacity: 0.26 * veilDown,
@@ -960,7 +992,7 @@ function buildTexture(ctx: DrawCtx): PartOut | null {
         });
         s += `</g>`;
       } else {
-        s += path(shape.d, { stroke: '#ffffff', width: 8, opacity: 0.34 * veilDown, clip });
+        s += rimPath(ctx, { stroke: '#ffffff', width: 8, opacity: 0.34 * veilDown, clip });
         s += ellipse(cx, shape.topY + H * 0.5, shape.halfW * 0.9, H * 0.44, {
           fill: '#f4fbff',
           opacity: 0.2 * veilDown,
@@ -1104,7 +1136,7 @@ function buildTexture(ctx: DrawCtx): PartOut | null {
           opacity: 0.28,
         });
       }
-      s += path(shape.d, { stroke: lighten(colors.body, 0.5), width: 1.4, opacity: 0.5 });
+      s += rimPath(ctx, { stroke: lighten(colors.body, 0.5), width: 1.4, opacity: 0.5 });
       s += `</g>`;
       break;
     }
@@ -1117,7 +1149,7 @@ function buildTexture(ctx: DrawCtx): PartOut | null {
       //   すりガラスがぼかしだけで作られるのに対し、こちらは境界を持つ。
       s += `<g clip-path="${url(clip)}">`;
       // 強い縁の屈折ハイライト
-      s += path(shape.d, { stroke: '#ffffff', width: ctx.strokeW * 2.2, opacity: 0.42 * veilDown });
+      s += rimPath(ctx, { stroke: '#ffffff', width: ctx.strokeW * 2.2, opacity: 0.42 * veilDown });
       // 輪郭に沿う鋭い帯（素体ごとに形が変わる）
       s += path(sheenBand(ctx, { t0: 0.05, t1: 0.66, inset: 0.1, width: 0.17, side: -1 }), {
         fill: '#ffffff',
@@ -1150,8 +1182,8 @@ function buildTexture(ctx: DrawCtx): PartOut | null {
       // ここでは縁の密度と、膜のたわみだけを足す。
       s += `<g clip-path="${url(clip)}">`;
       // 縁の重なり（外側ほど濃く、内側へ 2 段で薄れる）
-      s += path(shape.d, { stroke: colors.body, width: ctx.strokeW * 3.4, opacity: 0.3 });
-      s += path(shape.d, { stroke: colors.body, width: ctx.strokeW * 1.6, opacity: 0.26 });
+      s += rimPath(ctx, { stroke: colors.body, width: ctx.strokeW * 3.4, opacity: 0.3 });
+      s += rimPath(ctx, { stroke: colors.body, width: ctx.strokeW * 1.6, opacity: 0.26 });
       // 膜のたわみ。縦に走るごく淡い皺を 2〜3 本だけ。
       const folds = ctx.detail === 'full' ? 3 : 2;
       for (let i = 0; i < folds; i++) {
@@ -1180,7 +1212,7 @@ function buildTexture(ctx: DrawCtx): PartOut | null {
         s += highlightSpot(ctx, rng, { t: 0.24, k: 1.6, opacity: 0.1 });
       }
       // 輪郭の内側の陰。艶が無いぶん、形はこの陰だけで読ませる。
-      s += path(shape.d, {
+      s += rimPath(ctx, {
         stroke: mix(colors.body, colors.bodyDark, 0.85),
         width: 7,
         opacity: 0.17,

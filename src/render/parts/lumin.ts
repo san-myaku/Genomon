@@ -32,6 +32,7 @@ import { clamp, type Rng } from '../../core/rng.ts';
 import { Z, type DrawCtx, type PartOut } from '../ctx.ts';
 import { VIEW } from '../geom.ts';
 import { circle, n, path, url, type Box } from '../svg.ts';
+import { coatOwnsOutline } from './coat.ts';
 
 /** bbox を viewBox 内に収める（にじみは viewport で切られるので実害はない）。 */
 function clampBox(b: Box): Box {
@@ -195,6 +196,15 @@ export function buildLumin(ctx: DrawCtx): PartOut[] {
     });
 
     // ── 内側の縁光（どんな背景でも「縁が光っている」と読ませる）──
+    //
+    // 【もこもこのときは置かない — 実測】
+    //   ここは体の輪郭に沿って `strokeW * 1.2` の明るい線を 0.62 の
+    //   不透明度で引く。房が輪郭を担う個体では、これが房の内側に
+    //   **くっきりした 2 本目の輪郭**として出ていた（`HG8G-W7HU`）。
+    //   外側のにじみ（luminBack）は房の位置まで広がるので、
+    //   「縁が光っている」という読みはそちらだけで足りる。
+    if (coatOwnsOutline(ctx.parts.coat)) return out;
+
     // 中心を少しだけ沈めると縁の明るさが際立つ。
     const dip = ctx.defs.add('lumdip', (id) =>
       `<radialGradient id="${id}" cx="50%" cy="52%" r="72%">` +

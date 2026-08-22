@@ -510,6 +510,39 @@ export const CAT_LOCI: readonly CatLocusDef[] = [
     ],
   },
   {
+    locus: 'coat',
+    label: '毛',
+    alleles: [
+      // 【新設 — 製品オーナー要望「毛の要素を加えたい」】
+      //   質感（texture）に混ぜず独立したロカスにした。texture は排他なので
+      //   毛をそこへ入れると「ゼリー質のもふもふ」が作れなくなり、
+      //   質感 × 毛 の掛け算という観察の楽しみが消える。
+      //
+      //   毛は **輪郭に沿って外向きに生える**（`render/parts/coat.ts`）。
+      //   頭頂からは生やさない ── 頭頂は植物・角・触角・結晶が既に
+      //   取り合っていて、根元の距離を見る自動検査（D-033）に必ず掛かる。
+      //   輪郭全周へ散らす方式なら `roots` を宣言する必要がなく、
+      //   既存の装飾とぶつからない。
+      //
+      //   dominance は全て同値（3）。まつげ（lashes）と同じ設計で、
+      //   同値ヘテロは seed 由来の 50/50 抽選になるため
+      //   **weight の比がそのまま「その毛を持つ個体の割合」**になる。
+      //   none 以外の合計 = 36%（＝毛のある個体の割合）。
+      { id: 'none',  label: 'なし',     dominance: 3, weight: 64 },
+      { id: 'down',  label: 'うぶ毛',   dominance: 3, weight: 12 },
+      { id: 'fuzz',  label: 'もこもこ', dominance: 3, weight: 10 },
+      { id: 'spiky', label: 'つんつん', dominance: 3, weight: 7 },
+      { id: 'shag',  label: 'ぼさぼさ', dominance: 3, weight: 5 },
+      // ── ひとすじ（wisp）は取り下げ ──
+      //   まばらな長い毛が数本だけ伸びる形質だったが、**製品オーナーの判断で
+      //   不採用**（2026-08-22「キモすぎる」）。カタログから外したので
+      //   新規個体には二度と出ない。
+      //   `render/parts/coat.ts` の `wisp` スタイルは **消さずに残してある**
+      //   （既存のセーブが遺伝子型に `wisp` を持っている可能性があるため。
+      //   消すとその個体の毛が無くなる）。`ocelli`・`button` と同じ扱い。
+    ],
+  },
+  {
     locus: 'palette',
     label: '配色',
     alleles: [

@@ -57,6 +57,7 @@ export type CatLocus =
   | 'floaters'    // 浮遊物
   | 'pattern'     // 模様
   | 'texture'     // 質感
+  | 'coat'        // 毛（輪郭に沿って生える体毛）
   | 'bicolor'     // 2 色化（体の色が途中で変わる）
   | 'lumin'       // 発光の出かた
   | 'palette';    // 配色ファミリー
@@ -211,6 +212,8 @@ export interface PartExpression {
   floaters: string;
   pattern: string;
   texture: string;
+  /** 体毛の生えかた（'none' なら無毛）。輪郭に沿って外向きに生える。 */
+  coat: string;
   /** 2 色化の出かた（'none' なら単色系）。 */
   bicolor: string;
   /** 発光の出かた（'none' なら光らない）。 */

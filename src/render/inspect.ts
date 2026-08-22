@@ -80,10 +80,11 @@ const INSIDE_IDS = /^(eye\d+|lash\d+|mouth|cheeks)$/;
  * 背面（z < BODY）に描かれるパーツのうち、体マスクを通していないと
  * 半透明の体越しに「体内部分」が透けて見えるもの。
  */
-const MUST_MASK_IDS = new Set(['feet', 'ears', 'tail', 'wings']);
+const MUST_MASK_IDS = new Set(['feet', 'ears', 'tail', 'wings', 'coat']);
 
 /** 卵に出てはいけないパーツ ID（成体用の装飾）。 */
 const EGG_FORBIDDEN = new Set([
+  'coat',
   'ears',
   'horns',
   'antennae',

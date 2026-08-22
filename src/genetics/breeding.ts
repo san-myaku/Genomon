@@ -12,7 +12,7 @@
 
 import { Rng, clamp01 } from '../core/rng.ts';
 import type { CatLocus, CatPair, Genotype, NumLocus, NumPair } from '../core/types.ts';
-import { CAT_LOCI, CAT_LOCUS_BY_ID, MUTATION, NUM_LOCI } from './loci.ts';
+import { CAT_LOCI, CAT_LOCUS_BY_ID, MUTATION, NUM_LOCI, NUM_LOCUS_BY_ID } from './loci.ts';
 
 export interface BreedOptions {
   /** 突然変異率の倍率（Visual Lab から一時的に変更する用）。既定 1。 */
@@ -43,6 +43,32 @@ function mutateCatAllele(locus: CatLocus, current: string, rng: Rng): string {
     weights.push(1 / Math.pow(d, 1.8));
   }
   return rng.pickWeighted(cand, weights);
+}
+
+/**
+ * 親の遺伝子型から対立遺伝子ペアを取り出す。無ければカタログ先頭で補う。
+ *
+ * 【素で `parent.cat[locus]` を読んではいけない理由】
+ *   遺伝子座を新設すると、それ以前に保存された個体の `cat` にはその座が
+ *   無い。`pa[0]` と書くと undefined の添字参照で落ちる ＝ **旧セーブの
+ *   個体が交配できなくなる**。表現型側（phenotype.ts の
+ *   `catPairOrDefault`）は既にカタログ先頭の対立遺伝子で補っているので、
+ *   交配も同じ規則に揃える。カタログ先頭は各ロカスとも既定形質
+ *   （多くは 'none'）なので、旧個体に新形質が勝手に生えることはない。
+ */
+function pairOrDefault(g: Genotype, locus: CatLocus): CatPair {
+  const pair = g.cat[locus];
+  if (pair) return pair;
+  const id = CAT_LOCUS_BY_ID[locus].alleles[0]?.id ?? 'none';
+  return [id, id] as CatPair;
+}
+
+/** 数値形質版。無ければカタログの平均値で補う（理由は pairOrDefault と同じ）。 */
+function numPairOrDefault(g: Genotype, locus: NumLocus): NumPair {
+  const pair = g.num[locus];
+  if (pair) return pair;
+  const mean = NUM_LOCUS_BY_ID[locus].mean;
+  return [mean, mean] as NumPair;
 }
 
 /** 数値形質のゆらぎ。低確率で大きく飛ぶ。 */
@@ -81,8 +107,8 @@ export function breed(
 
     // ── 減数分裂：各親から独立に 1 つずつ ──
     const meio = root.stream(`meiosis:${locus}`);
-    const pa = parentA.cat[locus];
-    const pb = parentB.cat[locus];
+    const pa = pairOrDefault(parentA, locus);
+    const pb = pairOrDefault(parentB, locus);
     let a = meio.bool() ? pa[0] : pa[1];
     let b = meio.bool() ? pb[0] : pb[1];
 
@@ -99,8 +125,8 @@ export function breed(
   for (const def of NUM_LOCI) {
     const locus = def.locus;
     const meio = root.stream(`meiosis:${locus}`);
-    const pa = parentA.num[locus];
-    const pb = parentB.num[locus];
+    const pa = numPairOrDefault(parentA, locus);
+    const pb = numPairOrDefault(parentB, locus);
     const a = meio.bool() ? pa[0] : pa[1];
     const b = meio.bool() ? pb[0] : pb[1];
 
@@ -138,9 +164,9 @@ export function inheritanceReport(
   const out = {} as Record<CatLocus, { fromA: boolean; fromB: boolean; mutated: boolean }>;
   for (const def of CAT_LOCI) {
     const locus = def.locus;
-    const c = child.cat[locus];
-    const a = parentA.cat[locus];
-    const b = parentB.cat[locus];
+    const c = pairOrDefault(child, locus);
+    const a = pairOrDefault(parentA, locus);
+    const b = pairOrDefault(parentB, locus);
     const inA = (id: string): boolean => a[0] === id || a[1] === id;
     const inB = (id: string): boolean => b[0] === id || b[1] === id;
     out[locus] = {

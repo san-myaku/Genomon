@@ -32,6 +32,7 @@ import {
   registerBodyMaskOut,
   veilShowThrough,
 } from './parts/body.ts';
+import { buildCoat } from './parts/coat.ts';
 import { buildFace } from './parts/face.ts';
 import { buildPattern } from './parts/pattern.ts';
 import { buildLumin } from './parts/lumin.ts';
@@ -90,6 +91,7 @@ function safeParts(pheno: Phenotype): Phenotype['parts'] {
     lumin: p.lumin ?? 'none',
     pattern: p.pattern ?? 'none',
     texture: p.texture ?? 'matte',
+    coat: p.coat ?? 'none',
     silhouette: p.silhouette ?? 'plain',
   };
 }
@@ -140,6 +142,7 @@ export function buildRenderModel(
   ctx.bodyClip = registerBodyClip(ctx);
 
   const collected: PartOut[] = [
+    ...buildCoat(ctx),
     ...buildWings(ctx),
     ...buildTail(ctx),
     ...buildEars(ctx),
@@ -172,11 +175,15 @@ export function buildRenderModel(
           `<feGaussianBlur stdDeviation="1.5"/></filter>`,
         )
       : '';
-  const BACK_MASKED = new Set(['feet', 'ears', 'tail', 'wings']);
+  const BACK_MASKED = new Set(['feet', 'ears', 'tail', 'wings', 'coat']);
+  // うすぎぬの「透けレイヤ」を足すのは、体内に面積のある付け根を持つ器官だけ。
+  // 毛は体内へ 3px ほどの細い根が埋まっているだけなので、透かしても絵にならず
+  // パスの数（毛は 1 個体で最大 96 本）が倍になるだけになる。
+  const VEIL_SHOWN = new Set(['feet', 'ears', 'tail', 'wings']);
   for (const p of collected) {
     if (p.z < Z.BODY && BACK_MASKED.has(p.id) && p.svg) {
       const outer = `<g mask="${url(maskOut)}">${p.svg}</g>`;
-      if (!maskIn) {
+      if (!maskIn || !VEIL_SHOWN.has(p.id)) {
         p.svg = outer;
         continue;
       }

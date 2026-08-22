@@ -31,6 +31,7 @@ const PART_WEIGHTS: readonly (readonly [keyof PartExpression, number])[] = [
   ['floaters', 0.6],
   ['pattern', 1.2],
   ['texture', 1.0],
+  ['coat', 1.0],
 ];
 
 /** 数値形質の重みと正規化幅（Phenotype 上の実レンジ）。 */

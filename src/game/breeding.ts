@@ -156,6 +156,7 @@ const PREVIEW_LOCI: readonly CatLocus[] = [
   'palette',
   'pattern',
   'texture',
+  'coat',
   'silhouette',
   'eyeShape',
   'eyeCount',
