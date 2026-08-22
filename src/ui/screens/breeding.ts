@@ -1,13 +1,8 @@
 /**
  * 交配。
  *
- * 【要件（指示書 §9）】
- *   親A・親B・親の主な特徴・遺伝情報の概要・子に受け継がれる可能性がある特徴（breedingPreview）・
- *   必要条件・生まれた卵 を表示する。
- *
- * 【設計】
- *   2 体を選ぶまでは条件（canBreed の reason）を出し続け、
- *   「なぜ交配できないのか」が常に画面上で分かるようにする。
+ * 見た目の特徴は誰でも比較できるが、子に出る形質の遺伝予測は
+ * 両親を鑑定したときだけ開く。未鑑定の親から保因情報を逆算できないようにする。
  */
 
 import type { Creature } from '../../core/types.ts';
@@ -29,6 +24,8 @@ import {
   doBreed,
   findCreature,
   getPhenotype,
+  isAppraised,
+  observedRarity,
   roomLeft,
   unlockHint,
 } from '../gameApi.ts';
@@ -36,19 +33,9 @@ import {
 export function screenBreeding(app: App, host: HTMLElement): Screen {
   let aId: string | null = null;
   let bId: string | null = null;
-  /** 直近に生まれた卵（生まれた卵を画面に出すため）。 */
   let bornEggId: string | null = null;
-  /** 直前の操作で交配が成功したか（成功をはっきり見せるため）。 */
   let justBred = false;
-  /** 成功直後に生まれた卵まで自動スクロールする、の 1 回きりフラグ。 */
   let scrollToBorn = false;
-  /**
-   * 成功カードを見せているあいだ「次の目標」を据え置くための解除関数。
-   *
-   * 交配すると両親の機嫌が下がるので、放っておくと成功した次の瞬間に
-   * 目標行が「交配の じゅんび: ○○ の 機嫌が たりません（59 / 60）」へ変わる。
-   * せっかくの成功が、失敗しているように見える文で一瞬にして塗りつぶされる。
-   */
   let releaseObjective: (() => void) | null = null;
   let objectiveTimer = 0;
 
@@ -60,14 +47,12 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
     fn?.();
   }
 
-  /** 成功の余韻のあいだだけ目標行を止める（自動で戻す）。 */
   function holdObjectiveFor(ms: number): void {
     resumeObjective();
     releaseObjective = app.holdObjective();
     objectiveTimer = window.setTimeout(() => resumeObjective(), ms);
   }
 
-  /** 親カードの主な特徴（3 つまで）。 */
   function mainTraits(c: Creature): string {
     const pheno = getPhenotype(c, 'adult');
     const list = visibleTraits(pheno, 'adult')
@@ -88,27 +73,25 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
       );
     }
     const pheno = getPhenotype(c, 'adult');
+    const appraised = isAppraised(c);
+    const rarityText = appraised
+      ? `${pheno.rarity.score.toFixed(1)} / 100`
+      : observedRarity(pheno).label;
     return (
       `<div class="card">` +
       `<div class="row"><span class="pill pill--accent">親${role}</span>` +
-      `<strong style="color:var(--head)">${esc(c.name)}</strong></div>` +
+      `<strong style="color:var(--head)">${esc(c.name)}</strong>` +
+      (appraised ? `<span class="pill pill--brass">${icon('helix')} 鑑定済み</span>` : '') +
+      `</div>` +
       `<div class="compare__art" style="margin:var(--sp-2) 0">${thumbSvg(pheno, c.life)}</div>` +
       `<div class="row" style="gap:4px">${mainTraits(c)}</div>` +
       `<p class="section__note" style="margin:var(--sp-2) 0 0;font-size:.78rem">` +
       `性格：${esc(pheno.personality.label)}／配色：${esc(pheno.palette.family)}系／` +
-      `めずらしさ：${pheno.rarity.tier === 'common' ? 'ふつう' : `${Math.round(pheno.rarity.score)} 点`}</p>` +
+      `めずらしさ：${esc(rarityText)}</p>` +
       `</div>`
     );
   }
 
-  /**
-   * 必要な条件を **全部** 並べる。
-   *
-   * `canBreed` は最初に引っかかった 1 つしか返さないので、
-   * コインが 0 でも「機嫌が たりません」としか出ず、何を揃えれば動くのかが分からない。
-   * 判定の正本は canBreed のままにしたうえで、表示だけ UI 側で列挙する。
-   * しきい値は format.ts の BREEDING_UI（game/config.ts の写し）を使う。
-   */
   function conditions(a: Creature | undefined, b: Creature | undefined): { ok: boolean; text: string }[] {
     const now = Date.now();
     const rows: { ok: boolean; text: string }[] = [];
@@ -118,9 +101,7 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
 
     for (const c of [a, b]) {
       if (!c) continue;
-      if (c.life.stage !== 'adult') {
-        rows.push({ ok: false, text: `${c.name} が 成体である` });
-      }
+      if (c.life.stage !== 'adult') rows.push({ ok: false, text: `${c.name} が 成体である` });
       rows.push({
         ok: c.life.mood >= BREEDING_UI.minMood,
         text: `${c.name} の 機嫌 ${Math.floor(c.life.mood)} / ${BREEDING_UI.minMood}`,
@@ -130,9 +111,7 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
         text: `${c.name} の 健康 ${Math.floor(c.life.health)} / ${BREEDING_UI.minHealth}`,
       });
       const left = breedCooldownLeft(c, now);
-      if (left > 0) {
-        rows.push({ ok: false, text: `${c.name} の 休息あけ まで あと ${Math.ceil(left / 1000)} 秒` });
-      }
+      if (left > 0) rows.push({ ok: false, text: `${c.name} の 休息あけ まで あと ${Math.ceil(left / 1000)} 秒` });
     }
 
     rows.push({
@@ -141,7 +120,6 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
     });
     const eggRoom = roomLeft(app.state, 'egg');
     rows.push({ ok: eggRoom > 0, text: `たまごの 空き枠 ${eggRoom} / ${app.state.capacity.egg}` });
-
     return rows;
   }
 
@@ -172,26 +150,26 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
 
     const adults = creaturesByStage(app.state, 'adult');
     const chk = aId && bId ? canBreed(app.state, aId, bId) : { ok: false, reason: '成体を 2 体 えらんでください。' };
+    const parentA = aId ? findCreature(app.state, aId) : undefined;
+    const parentB = bId ? findCreature(app.state, bId) : undefined;
+    const bothAppraised = Boolean(parentA && parentB && isAppraised(parentA) && isAppraised(parentB));
 
-    const preview =
-      aId && bId
-        ? (() => {
-            const a = findCreature(app.state, aId);
-            const b = findCreature(app.state, bId);
-            if (!a || !b) return [];
-            return breedingPreview(a, b);
-          })()
-        : [];
+    const preview = bothAppraised && parentA && parentB ? breedingPreview(parentA, parentB) : [];
 
     const cards = adults
       .map((c) => {
         const pheno = getPhenotype(c, 'adult');
         const picked = c.id === aId || c.id === bId;
         const role = c.id === aId ? '親A' : c.id === bId ? '親B' : '';
+        const appraised = isAppraised(c);
+        const extra = appraised
+          ? [`<span class="pill pill--brass">${icon('helix')} 鑑定済み</span>`]
+          : [`<span class="pill">${icon('spark')} ${esc(observedRarity(pheno).label)}</span>`];
         return creatureCard(c, pheno, {
           action: 'pickparent',
           pressed: picked,
-          rarity: visibleRarity(pheno, 'adult'),
+          rarity: appraised ? visibleRarity(pheno, 'adult') : null,
+          extraPills: extra,
           meta: role
             ? `えらばれています（${role}）`
             : `${STAGE_LABEL[c.life.stage]}・${generationLabel(c.generation)}`,
@@ -200,10 +178,28 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
       .join('');
 
     const egg = bornEggId ? findCreature(app.state, bornEggId) : undefined;
-    const condRows = conditions(
-      aId ? findCreature(app.state, aId) : undefined,
-      bId ? findCreature(app.state, bId) : undefined,
-    );
+    const condRows = conditions(parentA, parentB);
+
+    const geneticsSection =
+      aId && bId
+        ? bothAppraised
+          ? preview.length > 0
+            ? section(
+                '鑑定データから見る 遺伝予測',
+                `<ul class="lines">${preview.map((p) => `<li><strong>${esc(p.label)}</strong>：${esc(p.detail)}</li>`).join('')}</ul>`,
+                '両親の全遺伝子を使った予測です。実際の子では減数分裂と突然変異が起こります。',
+                'helix',
+              )
+            : ''
+          : section(
+              '遺伝予測は 未開示です',
+              `<div class="card card--tight"><p style="margin:0"><strong>両親を鑑定すると、ここに詳しい遺伝予測が出ます。</strong></p>` +
+                `<p class="section__note" style="margin:var(--sp-2) 0 0">` +
+                `いま分かるのは見た目の特徴だけです。未鑑定の個体が持つ潜在形質は交配画面からは分かりません。</p></div>`,
+              undefined,
+              'lock',
+            )
+        : '';
 
     setHtml(
       host,
@@ -224,27 +220,13 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
           : '') +
         `<div class="card card--tight" style="margin-bottom:var(--sp-4)">` +
         `<div class="row"><span class="grow"><strong style="color:var(--head)">必要な 条件</strong>` +
-        `<p class="section__note" style="margin:2px 0 4px">` +
-        `${esc(chk.ok ? 'そろっています。交配できます。' : (chk.reason ?? ''))}</p>` +
+        `<p class="section__note" style="margin:2px 0 4px">${esc(chk.ok ? 'そろっています。交配できます。' : (chk.reason ?? ''))}</p>` +
         conditionsHtml(condRows) +
         `</span>` +
-        // 交配は 80 コインかかる。押してから減るのでは事後報告なので、ボタンに併記する。
         `<button type="button" class="btn btn--cost" data-act="breed"${chk.ok ? '' : ' disabled'}>` +
-        `<span>交配する</span>` +
-        `<span class="btn__cost">${icon('coin')} ${BREEDING_UI.costCoins}</span></button></div>` +
+        `<span>交配する</span><span class="btn__cost">${icon('coin')} ${BREEDING_UI.costCoins}</span></button></div>` +
         `</div>` +
-        (preview.length > 0
-          ? section(
-              '子に 受けつがれる かもしれない 特徴',
-              `<ul class="lines">` +
-                preview
-                  .map((p) => `<li><strong>${esc(p.label)}</strong>：${esc(p.detail)}</li>`)
-                  .join('') +
-                `</ul>`,
-              'どちらの 形質が 出るかは 生まれるまで 分かりません。かくれていた 形質が 出ることも あります。',
-              'sprout',
-            )
-          : '') +
+        geneticsSection +
         (egg
           ? `<div data-born>` +
             section(
@@ -263,15 +245,12 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
           : '') +
         section(
           '成体の 一覧',
-          adults.length > 0
-            ? `<div class="grid-auto">${cards}</div>`
-            : emptyState('sprout', ['成体が いません。']),
-          'カードを 押すと 親A → 親B の 順で えらばれます。もう一度 押すと 外れます。',
+          adults.length > 0 ? `<div class="grid-auto">${cards}</div>` : emptyState('sprout', ['成体が いません。']),
+          'カードを 押すと 親A → 親B の 順で えらばれます。鑑定済みの親どうしなら詳しい遺伝予測も見られます。',
           'leaf',
         ),
     );
 
-    // 成功したときは、生まれた卵まで自動で送る（成功が画面外だと気付けない）。
     if (scrollToBorn) {
       scrollToBorn = false;
       const born = $('[data-born]', host);
@@ -292,36 +271,28 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
       bornEggId = r.eggId ?? null;
       sfx.play('breed');
       burstSparkles($('.compare', host), 16);
-      // 交配すると両親の機嫌が下がるので、選択を残したままだと
-      // 成功直後に「機嫌が たりません」＋灰色のボタンが出て、失敗に見える。
-      // 成功をはっきり見せて、親の選択は解除する。
       justBred = true;
       scrollToBorn = true;
       aId = null;
       bId = null;
-      // 成功カードを読むあいだ、目標行を据え置く。
       holdObjectiveFor(8000);
       app.save('交配');
-      app.rerender(); // update() = render()
+      app.rerender();
       toast('あたらしい たまごが 生まれました。', 'good', 4200);
       return;
     }
-    if (act === 'tonursery') return; // 通常のリンクとして遷移させる
+    if (act === 'tonursery') return;
 
     const id = t.dataset.pickparent;
     if (!id) return;
     sfx.play('tap');
-    // 次の交配へ進んだ＝余韻は終わり。目標行を動かしてよい。
     if (justBred) resumeObjective();
     justBred = false;
     if (id === aId) aId = null;
     else if (id === bId) bId = null;
     else if (!aId) aId = id;
     else if (!bId) bId = id;
-    else {
-      // 2 体そろっているときは、押した子を親B に入れ替える（選び直しやすくする）。
-      bId = id;
-    }
+    else bId = id;
     render();
   });
 
@@ -331,7 +302,6 @@ export function screenBreeding(app: App, host: HTMLElement): Screen {
     update: render,
     dispose() {
       off();
-      // 止めっぱなしにすると、他の画面で目標行が固まってしまう。
       resumeObjective();
     },
   };
