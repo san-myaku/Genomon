@@ -23,6 +23,10 @@
 import type { Phenotype } from '../core/types.ts';
 import { Rng, hashString } from '../core/rng.ts';
 import type { CardDesign } from './cardModel.ts';
+import { CARD_RANK_BY_ID, hasZone, type CardRankDef } from './cardRarity.ts';
+
+/** 段が渡されなかったときの保険（呼び出し側の取りこぼしで無地に化けないように）。 */
+const FALLBACK_RANK: CardRankDef = CARD_RANK_BY_ID.rare;
 
 /** マスク・模様の作画キャンバス。カード比（63:88）に合わせてある。 */
 const W = 630;
@@ -139,8 +143,90 @@ function collectorMask(): string {
   return wrap(inner);
 }
 
+/**
+ * Collector v2：**段（rarity）ごとに、箔を掛ける場所そのものを変える**。
+ *
+ * 【なぜ強さだけでは足りないか（§7）】
+ *   同じマスクのまま不透明度だけ上げ下げすると、STANDARD と MYTHIC が
+ *   「同じ絵の濃い／薄い」にしかならない。並べたときに段が読めるのは、
+ *   **光る場所が増えていく**からで、明るさが変わるからではない。
+ *
+ *     STANDARD    どこも光らない（マスクが空＝箔ゼロ）
+ *     NOTABLE     ロゴと段の帯だけ
+ *     RARE        ＋ 外周の罫と認証印
+ *     EXCEPTIONAL ＋ 背景（個体の周りは抜く）
+ *     MYTHIC      ＋ 抜きを浅くして、より広く分光させる
+ *
+ * 【座標の出どころ】
+ *   実際に描画したカードの各要素の位置を測って、この 630×880 の座標系へ
+ *   置き換えたもの。レイアウト（cardStyles.ts）を動かしたら測り直すこと。
+ *
+ * 【ゲノモンの上を洗い流さないこと】
+ *   箔は color-dodge で乗る。暗いカードの上では **アルファ 10% でも
+ *   十分に明るく焼き付く**ので、個体のいる楕円は中心付近をほぼ 0 にする。
+ */
+function collectorV2Mask(rank: CardRankDef): string {
+  const parts: string[] = [];
+
+  if (hasZone(rank, 'background')) {
+    // 背景の箔。個体のいる楕円をやわらかく抜く。MYTHIC だけ抜きを浅くして、
+    // 分光が体の周囲まで回り込むようにする（それでも中心はほぼ 0）。
+    // 【抜きの深さは段ごとに変える — 一律にしたら両側で失敗した】
+    //   金（gold）は color-dodge なので面ごと持ち上がり、浅い抜きだと
+    //   **カード全面と個体が金一色**になった（MYTHIC より派手になり、
+    //   段の順序まで逆転していた）。
+    //   そこで一律に深くしたら、今度は分光（prism）が縁の細い帯しか残らず、
+    //   MYTHIC が EXCEPTIONAL より地味になった。
+    //   分光は体の周りへ回り込むのが見どころなので浅く、
+    //   金は縁の額装に留めるので深く。**同じ抜きは使えない。**
+    const hole =
+      rank.id === 'mythic'
+        ? { cy: 37, r: 56, mid: 0.34, midA: 0.03, out: 0.62, outA: 0.42, edgeA: 0.95 }
+        : { cy: 40, r: 62, mid: 0.5, midA: 0.02, out: 0.8, outA: 0.2, edgeA: 0.9 };
+    parts.push(
+      `<defs><radialGradient id="hole2" cx="50%" cy="${hole.cy}%" r="${hole.r}%">` +
+        `<stop offset="0" stop-color="#fff" stop-opacity="0"/>` +
+        `<stop offset="${hole.mid}" stop-color="#fff" stop-opacity="${hole.midA}"/>` +
+        `<stop offset="${hole.out}" stop-color="#fff" stop-opacity="${hole.outA}"/>` +
+        `<stop offset="1" stop-color="#fff" stop-opacity="${hole.edgeA}"/>` +
+        `</radialGradient></defs>` +
+        `<rect width="${W}" height="${H}" fill="url(#hole2)"/>`,
+    );
+  }
+
+  if (hasZone(rank, 'border')) {
+    // 外周の罫。EXCEPTIONAL 以上は二重にして「額装された」感じを出す。
+    parts.push(`<rect x="12" y="17" width="606" height="846" rx="20" fill="none" stroke="#fff" stroke-width="7"/>`);
+    if (rank.edge === 'metalDouble' || rank.edge === 'prism') {
+      parts.push(`<rect x="26" y="31" width="578" height="818" rx="13" fill="none" stroke="#fff" stroke-width="2.2"/>`);
+    }
+  } else if (rank.edge === 'hairline') {
+    parts.push(`<rect x="17" y="22" width="596" height="836" rx="18" fill="none" stroke="#fff" stroke-width="2" opacity="0.75"/>`);
+  }
+
+  if (hasZone(rank, 'logo')) {
+    // 上部レールのロゴと、右側の格の記号。
+    parts.push(`<rect x="34" y="30" width="216" height="28" rx="4" fill="#fff" opacity="0.9"/>`);
+    parts.push(`<rect x="430" y="29" width="166" height="30" rx="4" fill="#fff" opacity="0.85"/>`);
+  }
+
+  if (hasZone(rank, 'rank')) {
+    // 段の帯（ランク名＋点数）。ここが光るかどうかが、いちばん目に付く差。
+    parts.push(`<rect x="35" y="694" width="431" height="37" rx="6" fill="#fff" opacity="0.9"/>`);
+  }
+
+  if (hasZone(rank, 'seal')) {
+    parts.push(`<circle cx="536" cy="677" r="66" fill="#fff" opacity="0.88"/>`);
+  }
+
+  // どこも光らない段（STANDARD）は、完全に透明なマスクを返す。
+  // 透明＝箔なし（このファイル冒頭の「アルファで効く」を参照）。
+  return wrap(parts.join(''));
+}
+
 /** デザインごとの foil マスク（data URI）。 */
-export function foilMaskUri(design: CardDesign): string {
+export function foilMaskUri(design: CardDesign, rank?: CardRankDef): string {
+  if (design === 'collectorV2') return dataUri(collectorV2Mask(rank ?? FALLBACK_RANK));
   const svg =
     design === 'certified' ? certifiedMask() : design === 'natural' ? naturalMask() : collectorMask();
   return dataUri(svg);
@@ -159,7 +245,12 @@ export function artHoleMaskUri(design: CardDesign): string {
       ? { x: 40, y: 170, w: 550, h: 431, r: 10 }
       : design === 'natural'
         ? { x: 41, y: 140, w: 547, h: 282, r: 8 }
-        : { x: 31, y: 64, w: 567, h: 622, r: 22 };
+        : design === 'collectorV2'
+          // v2 は絵が縦の 7 割を占める。全部を抜くと地紋が消えてしまうので、
+          // **個体の体が来る中央の塊だけ** を抜き、縁と情報欄の裏には残す
+          // （実測: 絵は 6.4〜78.1%、体はその内側の 10〜70% に収まる）。
+          ? { x: 76, y: 88, w: 478, h: 528, r: 26 }
+          : { x: 31, y: 64, w: 567, h: 622, r: 22 };
   return dataUri(
     wrap(
       `<defs><mask id="h" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}">` +

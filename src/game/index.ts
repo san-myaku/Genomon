@@ -58,6 +58,7 @@ export {
   appraisedAtOf,
   canAppraise,
   deriveGeneticReport,
+  deriveGeneticReportOf,
   isAppraised,
   observedRarity,
   observedSignal,

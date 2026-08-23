@@ -91,6 +91,14 @@ export const CARD_CSS = `
 .cards-fold--settings>.cards-fold-body{padding:0}
 .cards-wrap:not(.cards-wrap--narrow) .cards-fold--settings>summary{display:none}
 
+/* 【seg は折り返す — 実測で 320px からはみ出した】
+   labStyles の .seg は inline-flex で折り返さない。段（AUTO + 5 段）と
+   版面（4 案）を足したことで、EXCEPTIONAL / Legacy Collector が
+   320px の画面から 40〜250px はみ出していた。
+   Visual Lab の .seg には触らないよう .cards-wrap で囲う。 */
+.cards-wrap .seg{flex-wrap:wrap;max-width:100%}
+.cards-wrap .seg button{flex:0 1 auto;min-width:0}
+
 .cards-saved{display:grid;gap:6px}
 .cards-saved-item{display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:8px;
   border:1.5px solid var(--line);background:var(--panel)}
@@ -493,25 +501,32 @@ export const CARD_CSS = `
   }
 }
 
-/* 狭い画面では、デッキの「版面／箔」を細くして「つぎ」を最大化する。 */
-@media (max-width:400px){
+/* 少し狭い画面では、デッキの「版面／箔／面」を細くして「つぎ」を最大化する。 */
+@media (max-width:620px){
   .cards-deck-swap{max-width:62px}
   .cards-deck-swap b{max-width:48px;font-size:10.5px}
   .cards-deck-main{font-size:15px}
 }
 
 /*
-   360px 以下では 5 つを 1 段に並べきれず、「つぎのカード」が 62px まで
-   潰れて 2 行に折り返していた（実測 320px）。2 段に分け、
-   **主役を最下段の全幅**に置く（親指にいちばん近い所が主役）。
+   【閾値を 360px から 480px へ広げた — ボタンが 1 つ増えたため】
+     元は 5 つ（戻る・つぎ・版面・箔・保存）で、360px 以下だけが 2 段だった。
+     裏返しの「面」を足して 6 つになり、393px で
+     「つぎのカード」が 73px まで潰れて 2 行に折り返す計算になる
+     （52 + 62x3 + 52 + すき間 30 = 320px を引くと 47px しか残らない）。
+     余裕を持って 480px 以下は 2 段にし、**主役を最下段の全幅**へ置く
+     （親指にいちばん近い所が主役）。
+     ボタンを足すときは、必ずここの計算をやり直すこと。
 */
-@media (max-width:360px){
+@media (max-width:480px){
   .cards-wrap{--cards-deck-h:112px}
   .cards-deck{flex-wrap:wrap}
   .cards-deck-btn:not(.cards-deck-main){order:1;flex:1 1 auto;min-width:0;min-height:42px}
   .cards-deck-main{order:2;flex:1 0 100%;min-height:48px;font-size:16px}
   .cards-deck-swap{max-width:none}
-  .cards-deck-swap b{max-width:none;font-size:11px}
+  .cards-deck-swap b{max-width:none;font-size:10.5px}
+  /* トーストが 2 段のデッキバーの裏に隠れないよう、さらに持ち上げる。 */
+  #lab-toast{bottom:128px}
 }
 
 /*
@@ -530,6 +545,17 @@ export const CARD_CSS = `
   .cards-showcase{width:min(40vw,var(--cards-showcase-w,430px),340px)}
 }
 
+/* 表 / 裏の操作列。カード本体でもめくれるが、押せることが分かる場所を必ず 1 つ出す。 */
+.cards-facebar{justify-content:center;align-items:center;gap:8px;margin-top:2px}
+.cards-facebar .hint{margin:0;font-size:10.5px}
+.cards-facebar button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);
+  border-color:var(--accent)}
+@media (max-width:899px){
+  /* スマホではデッキバーの「面」が主役。ここは説明だけ残して場所を節約する。 */
+  .cards-facebar button{display:none}
+  .cards-facebar .hint{font-size:10px}
+}
+
 .cards-count{display:inline-block;margin-left:.4em;padding:1px 7px;border-radius:99px;
   background:var(--panel);border:1px solid var(--line);font-size:10px;color:var(--fg-soft)}
 .cards-cap-sub{display:block;margin-top:2px}
@@ -546,6 +572,371 @@ export const CARD_CSS = `
   .cards-stage{transition:none}
   .cards-deck-main:active{transform:none}
 }
+/* ══════════════════════════════════════════════════════════
+   Collector v2 ── 表（見るカード）
+   ══════════════════════════════════════════════════════════
+   【版面の縦の取りかた】
+     レール 4% / 絵 62% / 情報 24% / 脚（フレーバー）10%
+   文字情報を増やしても、絵は縦の 6 割を保つ（主役はゲノモン・§5）。
+   絵は flex:1 1 auto なので、情報欄の行数が増えたぶんだけ絵が痩せる。
+   欄を足すときは必ず 430px で実物を見て、絵が潰れていないか確かめること。 */
+
+/* 【左寄せを明示する — ライブラリが text-align:center を掛けている】
+   .holo-card 側の中央寄せがそのまま降りてきて、名前とフレーバーだけが
+   中央に寄っていた（flex の行は左に出るので、混在して余計に目立つ）。
+   版面の基準は左なので、body でいったん左へ戻す。 */
+.gmc-card--collectorV2 .gmc-body{padding:5.2% 5.6% 4.6%;text-align:left}
+.gmc-card .gmc-b-body{text-align:left}
+
+/* 背景・後光・幕はカード全面。窓の中だけに入れると光の帯が縁で切れて
+   「絵を貼った板」に見える（旧 Collector と同じ判断）。 */
+.gmc-card--collectorV2 .gmc-art{flex:1 1 auto;overflow:visible;min-height:0}
+.gmc-card--collectorV2 .gmc-art-bg{display:none}
+.gmc-card--collectorV2 .gmc-k-backdrop{position:absolute;inset:-4%;
+  background-image:var(--gmc-backdrop);background-size:100% 100%;background-repeat:no-repeat;
+  opacity:calc(.42 * var(--gmc-backdrop-amount,1));mix-blend-mode:screen;
+  transform:translate3d(calc(var(--pointer-dx,0) * -7px), calc(var(--pointer-dy,0) * -7px), 0)}
+.gmc-card--collectorV2 .gmc-k-halo{position:absolute;inset:0;
+  background:radial-gradient(44% 27% at 50% 33%,
+    color-mix(in srgb, var(--gmc-glow) 38%, transparent), transparent 72%);
+  mix-blend-mode:screen;opacity:calc(.5 * var(--gmc-backdrop-amount,1))}
+/* 情報欄の下半分だけ地を沈める。v2 は情報が多いぶん、旧 Collector より
+   幕の立ち上がりを上（44%）にしてある。 */
+.gmc-card--collectorV2 .gmc-k-scrim{position:absolute;inset:0;
+  background:linear-gradient(180deg, transparent 44%, rgba(4,3,8,.66) 66%, rgba(4,3,8,.93) 84%)}
+/* 絵は「窓いっぱい」より少し大きく出す。描画 SVG 自身が余白を持っているので、
+   等倍だと窓の中で一回り小さく見える（絵の上下に 10% ずつ空いていた）。
+   窓は overflow:visible なので、はみ出しても切れない。 */
+.gmc-card--collectorV2 .gmc-art-inner{
+  transform:translate3d(calc(var(--pointer-dx,0) * 3px), calc(var(--pointer-dy,0) * 3px), 0) scale(1.08);
+  filter:drop-shadow(0 .32em .5em rgba(0,0,0,.5))}
+
+/* ── 縁 ──
+   段の材質そのもの。実際に光らせるのは foil マスクの border ゾーンなので、
+   ここは「線があるかどうか・太さ」だけを持つ。 */
+.gmc-card .gmc-v-edge{position:absolute;inset:2.1%;border-radius:.62em;pointer-events:none;
+  border:.06em solid rgba(255,255,255,.055)}
+.gmc-card[data-rank="notable"] .gmc-v-edge{border-color:rgba(255,255,255,.14)}
+.gmc-card[data-rank="rare"] .gmc-v-edge{border-width:.1em;border-color:rgba(206,214,232,.5)}
+.gmc-card[data-rank="exceptional"] .gmc-v-edge{border-width:.12em;border-color:rgba(238,205,133,.6);
+  box-shadow:inset 0 0 0 .05em rgba(238,205,133,.18)}
+.gmc-card[data-rank="mythic"] .gmc-v-edge{border-width:.12em;border-color:rgba(226,214,255,.72);
+  box-shadow:inset 0 0 0 .05em rgba(190,160,255,.25), inset 0 0 1.1em -.3em rgba(190,160,255,.4)}
+
+/* ── 上のレール ── */
+.gmc-card--collectorV2 .gmc-v-rail{display:flex;align-items:center;justify-content:space-between;
+  gap:.6em;padding-bottom:.3em;min-width:0}
+.gmc-card--collectorV2 .gmc-wordmark{font-size:.76em;letter-spacing:.42em;color:var(--gmc-ink)}
+.gmc-card .gmc-v-pips{flex:0 0 auto;display:flex;gap:.18em;font-size:.66em;line-height:1}
+.gmc-card .gmc-v-pips i{font-style:normal;color:var(--gmc-metal-dim);opacity:.45}
+.gmc-card .gmc-v-pips i.on{color:var(--gmc-metal);opacity:1;
+  text-shadow:0 0 .35em color-mix(in srgb, var(--gmc-accent) 55%, transparent)}
+.gmc-card[data-rank="mythic"] .gmc-v-pips i.on{color:#fff;
+  text-shadow:0 0 .5em rgba(220,190,255,.9), 0 0 .9em rgba(140,200,255,.5)}
+
+/* ── 情報欄 ── */
+/* 【右 23% を認証印のために空けておく】
+   最初は印をカード全体に対する % で置いていたが、絵は flex:1 1 auto で
+   伸びるので情報欄の位置が個体ごとに動き、**印が段の帯に重なって
+   点数を隠した**（実測: 印 67.7〜83.3% / 帯 79.2〜83.4%）。
+   位置を推測せず、情報欄そのものに右の柱を予約する。 */
+.gmc-card--collectorV2 .gmc-v-info{position:relative;flex:0 0 auto;display:flex;
+  flex-direction:column;gap:.3em;padding-top:.35em;padding-right:23%}
+
+/* 段の帯。ここだけで「一瞬で格が分かる」ことを担保する（§6）。 */
+.gmc-card .gmc-v-band{display:flex;align-items:baseline;justify-content:space-between;gap:.6em;
+  padding:.3em .6em;border-radius:.26em;min-width:0;position:relative;overflow:hidden}
+.gmc-card .gmc-v-rankname{font-size:1.12em;font-weight:900;letter-spacing:.18em;line-height:1.05;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.gmc-card[data-rank="exceptional"] .gmc-v-rankname{font-size:.9em;letter-spacing:.1em}
+.gmc-card .gmc-v-score{flex:0 0 auto;font-family:var(--gmc-mono);font-size:1.02em;font-weight:800;
+  letter-spacing:.02em;line-height:1}
+
+/* 段ごとの素材。文字色だけを変えるのではなく、帯そのものの材質を変える（§7）。 */
+.gmc-card .gmc-v-band--flat{background:rgba(255,255,255,.04);
+  border:.06em solid rgba(255,255,255,.085);color:var(--gmc-ink-soft)}
+.gmc-card .gmc-v-band--shine{color:var(--gmc-ink);border:.06em solid var(--gmc-rule);
+  background:linear-gradient(100deg, rgba(255,255,255,.17), rgba(255,255,255,.03) 62%)}
+.gmc-card .gmc-v-band--metal{color:#191c24;
+  background:linear-gradient(100deg,#8d95a5 0%,#e9edf4 21%,#a9b1bf 46%,#f3f6fb 63%,#97a0b0 100%)}
+.gmc-card .gmc-v-band--metalGlow{color:#2b1f06;
+  background:linear-gradient(100deg,#8a6a22 0%,#f1d78b 20%,#caa54f 45%,#fff1c0 63%,#aa8330 100%);
+  box-shadow:0 0 .8em -.2em rgba(240,214,138,.45)}
+.gmc-card .gmc-v-band--spectral{color:#1a1426;
+  background:linear-gradient(100deg,#ffd7e3 0%,#ffeab4 22%,#c6ffe1 44%,#bfe5ff 66%,#e3cdff 88%,#ffd7e3 100%);
+  box-shadow:0 0 1em -.2em rgba(200,170,255,.55)}
+/* 金属・分光の帯には、ポインタに合わせて動く艶を重ねる。 */
+.gmc-card .gmc-v-band--metal::after,
+.gmc-card .gmc-v-band--metalGlow::after,
+.gmc-card .gmc-v-band--spectral::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(calc(var(--pointer-dx,0) * 30deg + 105deg),
+    rgba(255,255,255,.66) 0%, rgba(255,255,255,0) 34%, rgba(0,0,0,.22) 60%, rgba(255,255,255,.5) 100%);
+  mix-blend-mode:overlay;opacity:.8}
+
+/* 名前・特徴・メタは、右下の認証印を避けて組む。 */
+.gmc-card .gmc-v-name{font-family:var(--gmc-sans);font-size:1.42em;font-weight:800;letter-spacing:.08em;
+  line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gmc-ink)}
+.gmc-card .gmc-v-name em{font-style:normal;font-size:.42em;font-weight:600;letter-spacing:.2em;
+  color:var(--gmc-ink-soft);margin-left:.8em}
+.gmc-card .gmc-v-traits{display:flex;flex-wrap:wrap;gap:.1em .5em;font-size:.6em;line-height:1.5;
+  color:var(--gmc-ink);max-height:3em;overflow:hidden}
+.gmc-card .gmc-v-traits span{position:relative;white-space:nowrap}
+.gmc-card .gmc-v-traits span+span::before{content:"·";margin-right:.5em;color:var(--gmc-ink-soft)}
+.gmc-card .gmc-v-traits--none{color:var(--gmc-ink-soft)}
+.gmc-card .gmc-v-meta{display:flex;flex-wrap:wrap;gap:.2em .95em;font-size:.54em;line-height:1.4;
+  color:var(--gmc-ink)}
+.gmc-card .gmc-v-meta b{font-weight:700;letter-spacing:.2em;color:var(--gmc-ink-soft);margin-right:.45em}
+
+/* ── 認証印の置き場所（§8）──
+   右下・少し斜め・ゲノモンの顔には重ねない。顔は絵の上半分にあるので、
+   絵の下端と情報欄の境目にまたがる高さへ置く。 */
+.gmc-card--collectorV2 .gmc-v-seal{position:absolute;right:0;top:-3.6em;width:21%;
+  transform:rotate(-7deg);transform-origin:50% 50%}
+
+/* ── 脚（フレーバーと証明書番号）── */
+.gmc-card--collectorV2 .gmc-v-foot{margin-top:auto;display:flex;align-items:flex-end;gap:.7em;
+  padding-top:.5em;min-width:0}
+.gmc-card--collectorV2 .gmc-flavor{flex:1 1 auto;min-width:0;margin:0}
+.gmc-card--collectorV2 .gmc-flavor b{font-size:.42em;letter-spacing:.2em;color:var(--gmc-metal-dim)}
+/* 【小さくしすぎない — 実測で下限を割った】
+   .62em は 430px のカードで 8.1px（カード幅比 0.0189）。
+   e2e が持っている可読性の下限 0.021 を割っていた。目立たせないことと
+   読めないことは違う。大きさは name の 1/2 に留めつつ、下限は守る。 */
+.gmc-card--collectorV2 .gmc-flavor span{font-size:.72em;line-height:1.45;color:var(--gmc-ink-soft);
+  -webkit-line-clamp:2}
+.gmc-card .gmc-v-cert{flex:0 0 auto;font-family:var(--gmc-mono);font-size:.44em;letter-spacing:.08em;
+  color:var(--gmc-ink-soft);opacity:.75;white-space:nowrap}
+
+/* ══════════════════════════════════════════════════════════
+   認証印
+   ══════════════════════════════════════════════════════════
+   【素材の進化がそのまま格（§8）】
+     ink → inkFoil → silver → gold → holo
+   インク系は紙に押した線だけ。箔系は円盤そのものが箔で、意匠を抜く。
+
+   【暗い地の上で読めること】
+     本来の証券インクは深い臙脂だが、ほぼ黒のカードの上では何も見えない。
+     紙ではなく黒地に押す前提なので、赤みは保ったまま明度だけ上げてある
+     （最初に本来の暗さで置いたら、実際に真っ暗で消えた）。 */
+.gmc-card .gmc-seal{position:relative;display:block;width:100%;aspect-ratio:1;
+  --seal-ink:#d2536a;--seal-ring:#d2536a;--seal-line:#a83a4e;
+  --seal-disc:transparent;--seal-disc-edge:transparent}
+.gmc-card .gmc-seal-svg{display:block;width:100%;height:100%;overflow:visible}
+.gmc-card .gmc-seal--ink{filter:drop-shadow(0 .04em .08em rgba(0,0,0,.55))}
+/* 縁だけ箔が回る段。意匠はインクのまま。 */
+.gmc-card .gmc-seal--inkFoil{--seal-ring:#d9cdf2;
+  filter:drop-shadow(0 .04em .08em rgba(0,0,0,.55))}
+.gmc-card .gmc-seal--silver{--seal-ink:#2f3542;--seal-ring:#525b6d;--seal-line:#5d6678;
+  --seal-disc:#c6ccd8;--seal-disc-edge:#8b93a3;
+  filter:drop-shadow(0 .06em .14em rgba(0,0,0,.55))}
+.gmc-card .gmc-seal--gold{--seal-ink:#463108;--seal-ring:#6f5216;--seal-line:#7c5c1c;
+  --seal-disc:#e2c073;--seal-disc-edge:#a8823a;
+  filter:drop-shadow(0 .06em .16em rgba(0,0,0,.55))}
+.gmc-card .gmc-seal--holo{--seal-ink:#20173a;--seal-ring:#3d3168;--seal-line:#4b3d7d;
+  --seal-disc:#d3d9ff;--seal-disc-edge:#9a8fd0;
+  filter:drop-shadow(0 .06em .18em rgba(0,0,0,.6))}
+
+.gmc-card .gmc-seal-arc{fill:var(--seal-ink);font-family:var(--gmc-sans);font-weight:800}
+.gmc-card .gmc-seal-arc--top{font-size:7.4px;letter-spacing:.32px}
+.gmc-card .gmc-seal-arc--bot{font-size:7px;font-family:var(--gmc-mono);letter-spacing:.5px}
+.gmc-card .gmc-seal-word{fill:var(--seal-ink);font-family:var(--gmc-sans);font-weight:900;
+  font-size:9.4px;letter-spacing:1.1px}
+.gmc-card .gmc-seal-date{fill:var(--seal-ink);font-family:var(--gmc-mono);font-size:6.4px;
+  letter-spacing:.3px;opacity:.85}
+
+/* 箔の艶。インク系には付けない（紙に押したインクは光らない）。 */
+.gmc-card .gmc-seal-shine{position:absolute;inset:3%;border-radius:50%;pointer-events:none}
+.gmc-card .gmc-seal--silver .gmc-seal-shine,
+.gmc-card .gmc-seal--gold .gmc-seal-shine{mix-blend-mode:overlay;opacity:.85;
+  background:linear-gradient(calc(var(--pointer-dx,0) * 34deg + 112deg),
+    rgba(255,255,255,.9) 0%, rgba(255,255,255,0) 32%, rgba(0,0,0,.42) 58%, rgba(255,255,255,.75) 100%)}
+/* 【color-dodge だと白く飛んで銀に見えた】
+   明るい円盤の上に color-dodge を掛けると、どの色相も 255 に張り付いて
+   **ただの銀の印**になった（実測で段の差が出なくなっていた）。
+   円盤の地を落として、色を足す側（hard-light）で重ねる。 */
+.gmc-card .gmc-seal--holo{--seal-disc:#8f93c4}
+.gmc-card .gmc-seal--holo .gmc-seal-shine{mix-blend-mode:hard-light;opacity:.92;
+  background:conic-gradient(from calc(var(--pointer-dx,0) * 80deg + 20deg),
+    #ff5f96, #ffc24a, #55f0b4, #46b6ff, #b46cff, #ff5f96)}
+/* 【z-index で SVG を上げてはいけない】
+   円盤は SVG の中に描いてある。SVG を上へ出すと艶が円盤の **裏** へ回り、
+   分光がまったく見えず銀の印に見えた。艶は SVG の後ろの兄弟のまま、
+   inset+border-radius で円盤の内側だけに収める。 */
+
+/* ══════════════════════════════════════════════════════════
+   裏（読むカード）
+   ══════════════════════════════════════════════════════════
+   【全面を明るくしない（§12）】
+     紙は表と同じ黒のまま。その上に **書類だけ** を羊皮紙の面として置く。
+     全面を羊皮紙にすると、めくった瞬間に別のカードに見える。 */
+/* 【裏は表と別の文字寸法で組む】
+   表は絵が主役なので 3.05cqw で足りるが、裏は読む面。同じ寸法だと
+   430px のカードで本文 7.3px になり、書類の下 4 割が空いたまま
+   「小さくて読めないのにスカスカ」という最悪の版面になっていた。
+   文字を上げると余白も埋まる（実測して 3.75cqw に決めた）。 */
+/* 【cqw だけで組むとスマホで読めなくなる — 実測 6.8px / 320px では 5.6px】
+   表は絵が主役なので相対寸法でよいが、裏は読む面。スマホではカードの
+   実寸が 258〜331px しかないため、cqw に比例させると本文が 6px 台に落ちる。
+   **px の下限**を入れて、どの幅でも本文 9px を割らないようにする。
+   はみ出すぶんは書類の中だけをスクロールさせる（§23 が明示的に許している）。 */
+.gmc-card .gmc--back{font-size:max(16px, 3.75cqw);
+  --doc:#e9dfc6;--doc2:#ded2b4;--doc-ink:#2a2419;--doc-soft:#6e6350;
+  --doc-metal:#8a6a2a}
+.gmc-card .gmc-b-body{padding:4.6% 5%}
+.gmc-card .gmc-b-head{display:flex;align-items:center;justify-content:space-between;gap:.6em;
+  min-width:0;padding-bottom:.24em}
+.gmc-card .gmc-b-office{display:flex;align-items:baseline;gap:.55em;min-width:0}
+.gmc-card .gmc-b-office .gmc-wordmark{font-size:.76em;letter-spacing:.34em;color:var(--gmc-ink)}
+.gmc-card .gmc-b-office span{font-size:.44em;letter-spacing:.24em;color:var(--gmc-ink-soft);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* metal-dim（#6d5f95）はほぼ黒の地に沈んで読めなかった。 */
+.gmc-card .gmc-b-title{font-family:var(--gmc-serif);font-size:.6em;letter-spacing:.28em;
+  color:var(--gmc-metal);opacity:.82;padding-bottom:.5em}
+
+/* 書類そのもの。 */
+/* 【書類は伸ばさず、中身の高さで置く】
+   flex:1 1 auto で下端まで引き伸ばしていたので、記録の少ない個体だと
+   紙の下 4 割が空白のまま残り「小さいのにスカスカ」に見えた。
+   中身の高さで止めて、余白は書類の **外**（署名欄までの間）へ逃がす。
+   実際の証書もそう組まれている。 */
+.gmc-card .gmc-b-doc{position:relative;flex:0 1 auto;min-height:0;display:flex;flex-direction:column;
+  gap:.5em;padding:.7em .75em .6em;border-radius:.3em;color:var(--doc-ink);
+  background:linear-gradient(168deg, var(--doc), var(--doc2));
+  box-shadow:0 .1em .5em rgba(0,0,0,.5), inset 0 0 0 .05em rgba(0,0,0,.14)}
+.gmc-card .gmc-b-doc::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:var(--gmc-grain);background-size:100% 100%;opacity:.16;mix-blend-mode:multiply}
+.gmc-card .gmc-b-sec{min-width:0}
+.gmc-card .gmc-b-sec h4{margin:0 0 .16em;font-size:.44em;letter-spacing:.24em;font-weight:800;
+  color:var(--doc-metal);padding-bottom:.14em;border-bottom:.07em solid rgba(0,0,0,.2)}
+.gmc-card .gmc-b-row{display:flex;align-items:baseline;gap:.6em;min-width:0;line-height:1.42}
+.gmc-card .gmc-b-row b{flex:0 0 27%;font-size:.44em;letter-spacing:.14em;font-weight:700;
+  color:var(--doc-soft)}
+.gmc-card .gmc-b-row span{flex:1 1 auto;min-width:0;font-size:.56em;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmc-card .gmc-b-row span i{font-style:normal;font-family:var(--gmc-mono);font-size:.86em;
+  color:var(--doc-soft);margin-left:.7em}
+.gmc-card .gmc-b-row.on span{color:#7a4a12;font-weight:800}
+.gmc-card .gmc-b-none{margin:0;font-size:.5em;letter-spacing:.14em;color:var(--doc-soft);opacity:.85}
+
+.gmc-card .gmc-b-rank{display:flex;align-items:baseline;gap:.6em;min-width:0}
+.gmc-card .gmc-b-rank b{font-size:.86em;font-weight:900;letter-spacing:.14em;color:#5d3a0c}
+.gmc-card .gmc-b-rank-score{font-family:var(--gmc-mono);font-size:.8em;font-weight:800}
+.gmc-card .gmc-b-rank-pips{flex:1 1 auto;text-align:right;font-size:.56em;color:var(--doc-metal)}
+.gmc-card .gmc-b-reasons{margin:.1em 0 0;padding-left:.9em;font-size:.5em;line-height:1.5;
+  color:var(--doc-soft)}
+.gmc-card .gmc-b-reasons li{margin:0}
+
+.gmc-card .gmc-b-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.14em .5em}
+.gmc-card .gmc-b-stats>div{min-width:0;display:flex;flex-direction:column}
+.gmc-card .gmc-b-stats b{font-size:.38em;letter-spacing:.14em;color:var(--doc-soft);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmc-card .gmc-b-stats span{font-family:var(--gmc-mono);font-size:.6em;font-weight:800}
+.gmc-card .gmc-b-stats span i{font-style:normal;font-family:var(--gmc-sans);font-size:.6em;
+  font-weight:600;color:var(--doc-soft);margin:0 .35em 0 .16em}
+
+.gmc-card .gmc-b-genes{width:100%;border-collapse:collapse;table-layout:fixed}
+.gmc-card .gmc-b-genes th,
+.gmc-card .gmc-b-genes td{text-align:left;padding:.06em 0;font-size:.5em;line-height:1.4;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmc-card .gmc-b-genes th{width:22%;font-weight:700;color:var(--doc-soft)}
+.gmc-card .gmc-b-genes td{width:34%;font-weight:600}
+.gmc-card .gmc-b-genes td.z{width:14%;font-family:var(--gmc-mono);font-size:.44em;
+  letter-spacing:.06em;color:var(--doc-metal);font-weight:800}
+.gmc-card .gmc-b-genes td.e{width:30%;color:#5d3a0c;font-weight:700}
+
+.gmc-card .gmc-b-cols{display:grid;grid-template-columns:1fr 1fr;gap:.5em .8em}
+.gmc-card .gmc-b-sec--half{min-width:0}
+.gmc-card .gmc-b-sec--half .gmc-b-row b{flex:0 0 42%}
+
+.gmc-card .gmc-b-foot{flex:0 0 auto;margin-top:auto;display:flex;align-items:center;gap:.6em;
+  padding-top:.7em;min-width:0}
+.gmc-card .gmc-b-qr{flex:0 0 auto;width:3.1em;height:3.1em;border-radius:.16em;overflow:hidden;
+  box-shadow:0 0 0 .07em rgba(255,255,255,.16)}
+.gmc-card .gmc-b-qr svg{display:block;width:100%;height:100%}
+.gmc-card .gmc-b-fulltext{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:.1em}
+.gmc-card .gmc-b-fulltext b{font-size:.44em;letter-spacing:.2em;color:var(--gmc-ink)}
+.gmc-card .gmc-b-fulltext span{font-family:var(--gmc-mono);font-size:.42em;letter-spacing:.04em;
+  color:var(--gmc-ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmc-card .gmc-b-fulltext i{font-style:normal;font-size:.38em;letter-spacing:.16em;
+  color:var(--gmc-metal);opacity:.6}
+.gmc-card .gmc-b-seal{flex:0 0 auto;width:3.4em;height:3.4em;transform:rotate(-6deg)}
+
+/* ══════════════════════════════════════════════════════════
+   裏返し（§11）
+   ══════════════════════════════════════════════════════════
+   【器はカードの外側】
+     ライブラリの .holo-card__back は読み込み中の裏地用で、
+     backface-visibility:visible が当たっている。裏返し用ではないので、
+     3D の器を自前で作り、表と裏に独立した .holo-card を 1 枚ずつ入れる。
+
+   【面の中の 3D をきちんと畳む】
+     ライブラリは .holo-card__translater / __rotator に preserve-3d を掛ける。
+     面にだけ backface-visibility を付けても、子が自前の 3D 文脈を作ると
+     裏側が透けて見える環境がある。子にも明示的に掛けて畳む。 */
+.gmc-flip{width:100%;perspective:1500px}
+.gmc-flip-inner{position:relative;display:block;width:100%;padding:0;border:0;background:none;
+  transform-style:preserve-3d;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:transform .6s cubic-bezier(.2,.75,.25,1)}
+.gmc-flip[data-face="back"] .gmc-flip-inner{transform:rotateY(180deg)}
+.gmc-flip-inner:focus-visible{outline:3px solid var(--accent);outline-offset:7px;border-radius:16px}
+.gmc-flip-face{backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.gmc-flip-face>.holo-card,
+.gmc-flip-face .holo-card__translater{backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.gmc-flip-face--front{position:relative}
+.gmc-flip-face--back{position:absolute;inset:0;transform:rotateY(180deg)}
+/* 裏を向けているあいだ、表はポインタを拾わない（箔が動いてしまう）。 */
+.gmc-flip[data-face="back"] .gmc-flip-face--front{pointer-events:none}
+.gmc-flip[data-face="front"] .gmc-flip-face--back{pointer-events:none}
+
+/* ══ 比較・一覧では潰れる要素を間引く ══ */
+.gmc-q-lite .gmc-v-seal,
+.gmc-q-lite .gmc-v-cert,
+.gmc-q-lite .gmc-v-meta b{display:none}
+.gmc-q-lite .gmc-v-name,
+.gmc-q-lite .gmc-v-traits,
+.gmc-q-lite .gmc-v-meta{padding-right:0}
+.gmc-q-lite .gmc-v-traits{max-height:1.5em}
+.gmc-q-medium .gmc-v-traits{max-height:1.5em}
+.gmc-q-medium .gmc-seal-date{display:none}
+
+/* ══ スマホ ══ */
+@media (max-width:899px){
+  /* 裏面は文字が主役なので、狭い画面では相対の文字寸法を上げ、
+     あふれるぶんは書類の中だけをスクロールさせる（§23）。
+     カードの外形は変えないので、めくる操作の手ざわりは同じ。 */
+  /* 【下端を素で切らない】
+     スマホでは書類が必ずあふれる。行の途中でぷつりと切れると
+     「壊れている」に見えるので、下端だけ薄く消して
+     「まだ続く」と読めるようにする。 */
+  .gmc-card .gmc-b-doc{overflow-y:auto;-webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+    -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 1.2em),transparent);
+    mask-image:linear-gradient(180deg,#000 calc(100% - 1.2em),transparent)}
+  .gmc-card .gmc-b-cols{grid-template-columns:1fr}
+  /* 258px 幅のカードで 4 列は成立しない。 */
+  .gmc-card .gmc-b-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* 見出しと欄名も、本文と同じだけ持ち上げる（.44em では 7px を割る）。 */
+  .gmc-card .gmc-b-sec h4{font-size:.52em}
+  .gmc-card .gmc-b-row b{font-size:.5em}
+  .gmc-card .gmc-b-genes th,
+  .gmc-card .gmc-b-genes td{font-size:.56em}
+  .gmc-card .gmc-b-genes td.z{font-size:.48em}
+  .gmc-card .gmc-b-stats b{font-size:.44em}
+}
+
+/* ══ 動きへの配慮 ══ */
+@media (prefers-reduced-motion:reduce){
+  /* 3D で回さない。面を入れ替えるだけにする（§11）。 */
+  .gmc-flip-inner{transition:opacity .16s linear}
+  .gmc-flip[data-face="back"] .gmc-flip-inner{transform:none}
+  .gmc-flip-face--back{transform:none}
+  .gmc-flip[data-face="front"] .gmc-flip-face--back{opacity:0;visibility:hidden}
+  .gmc-flip[data-face="back"] .gmc-flip-face--front{opacity:0;visibility:hidden}
+  .gmc-flip[data-face="back"] .gmc-flip-face--back{opacity:1;visibility:visible}
+  .gmc-card--collectorV2 .gmc-k-backdrop,
+  .gmc-card--collectorV2 .gmc-art-inner{transform:none}
+}
+
 `;
 
 /** <style> をドキュメントへ 1 度だけ入れる（labStyles と同じ作法）。 */

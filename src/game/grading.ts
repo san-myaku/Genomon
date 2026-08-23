@@ -327,12 +327,29 @@ function suppressionNote(locus: CatLocus, expressedId: string, shownId: string):
 }
 
 export function deriveGeneticReport(creature: Creature): GeneticReport {
-  const pheno = phenotypeOf(creature.genotype, 'adult');
+  return deriveGeneticReportOf(creature.genotype, creature.seed);
+}
+
+/**
+ * Creature を持たない場所（Cards Lab の裏面）から、同じレポートを引く。
+ *
+ * 【なぜ分けたか】
+ *   カードの裏面は「この個体の公式記録」なので、遺伝の欄だけ Lab 専用の
+ *   ダミーにしたら意味が無い。Cards Lab は `Specimen.genotype` を持っている
+ *   ので、本編とまったく同じ計算をここから通す。
+ *   **本編の入口（deriveGeneticReport）はこれに委譲するだけ**にして、
+ *   二重実装を作らない。
+ *
+ * `reportSeed` は表示上の seed（Creature.seed 相当）。発現の抽選には
+ * `genotype.seed` を使う（`expressionFor` のコメント参照）。
+ */
+export function deriveGeneticReportOf(genotype: Genotype, reportSeed: string): GeneticReport {
+  const pheno = phenotypeOf(genotype, 'adult');
   const parts = pheno.parts as unknown as Record<string, unknown>;
 
   const categorical: CategoricalGeneReport[] = CAT_LOCI.map((def) => {
-    const pair = catPair(creature.genotype, def.locus);
-    const expression = expressionFor(creature.genotype.seed, def.locus, pair);
+    const pair = catPair(genotype, def.locus);
+    const expression = expressionFor(genotype.seed, def.locus, pair);
     // 実際に描かれた姿と食い違っていたら、その事実を添える。
     const shown = typeof parts[def.locus] === 'string' ? (parts[def.locus] as string) : null;
     const suppressed =
@@ -356,7 +373,7 @@ export function deriveGeneticReport(creature: Creature): GeneticReport {
   });
 
   const numeric: NumericGeneReport[] = NUM_LOCI.map((def) => {
-    const pair = numPair(creature.genotype, def.locus, def.mean);
+    const pair = numPair(genotype, def.locus, def.mean);
     return {
       locus: def.locus,
       label: def.label,
@@ -368,7 +385,7 @@ export function deriveGeneticReport(creature: Creature): GeneticReport {
 
   const allAlleles = categorical.flatMap((g) => g.alleles);
   return {
-    seed: creature.seed,
+    seed: reportSeed,
     exactRarity: {
       score: pheno.rarity.score,
       tier: pheno.rarity.tier,
