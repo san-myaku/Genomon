@@ -370,12 +370,42 @@ export const CARD_CSS = `
 .gmc-card--collector .gmc-k-tier{flex:1 1 auto;font-size:.46em;letter-spacing:.3em;font-weight:800;
   color:var(--gmc-ink-soft)}
 
+/* ══ フレーバー ══
+   【大きさの決めかた】
+   最初の版は 1.42cqw で組まれていて、430px のカードで **6.1px** しかなく
+   読めなかった（実測）。文として読ませるものなので、他の小さなラベルとは
+   別に下限を持たせる。1 行に押し込まず 2 行まで許し、文の途中で
+   三点リーダに切られないようにする。 */
+.gmc-card .gmc-flavor{display:flex;flex-direction:column;gap:.14em;min-width:0}
+.gmc-card .gmc-flavor b{font-size:.46em;letter-spacing:.22em;color:var(--gmc-ink-soft);font-weight:800}
+.gmc-card .gmc-flavor span{font-family:var(--gmc-serif);font-size:.78em;line-height:1.5;
+  letter-spacing:.02em;color:var(--gmc-ink);
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+
+.gmc-card--certified .gmc-flavor{margin-top:.55em;padding-top:.5em;
+  border-top:.05em solid var(--gmc-rule)}
+/* 【Natural History だけ 1 行にする — 実測で 6px あふれた】
+   3 案のうち Natural History がいちばん情報量が多い版面で、
+   ここに 2 行ぶん足すとカードからあふれた。標本記録の「備考」は
+   もともと 1 行の書き込みなので、版面としても 1 行のほうが正しい。 */
+.gmc-card--natural .gmc-flavor{margin-top:.34em;padding-top:.34em;
+  flex-direction:row;gap:.6em;align-items:baseline}
+.gmc-card--natural .gmc-flavor b{flex:0 0 auto}
+.gmc-card--natural .gmc-flavor span{font-style:italic;font-size:.66em;
+  -webkit-line-clamp:1;min-width:0}
+/* Collector は文字が最小限の版面。絵の下に 1 か所だけ、静かに置く。 */
+.gmc-card--collector .gmc-flavor{margin-bottom:.5em}
+.gmc-card--collector .gmc-flavor b{color:var(--gmc-metal-dim)}
+.gmc-card--collector .gmc-flavor span{color:var(--gmc-ink-soft);font-size:.74em;-webkit-line-clamp:2}
+
 /* ══ 小さいカード（一覧・比較）で潰れる要素を間引く ══ */
 .gmc-q-lite .gmc-c-spec em,
 .gmc-q-lite .gmc-n-house,
 .gmc-q-lite .gmc-c-foottext span,
 .gmc-q-lite .gmc-n-strip span{display:none}
 .gmc-q-lite .gmc-qr{opacity:.5}
+/* 比較（150px 前後）では文は読めないので、版面の占有だけ見せる。 */
+.gmc-q-medium .gmc-flavor span{-webkit-line-clamp:1}
 
 /* ══ 親指の届く所（スマホのデッキバー） ══ */
 /*

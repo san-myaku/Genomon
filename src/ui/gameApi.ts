@@ -47,6 +47,15 @@ export {
   // ── 展示会 ──
   canExhibit,
   runExhibition,
+  // ── 鑑定 ──
+  APPRAISAL_COST,
+  appraiseCreature,
+  appraisedAtOf,
+  canAppraise,
+  deriveGeneticReport,
+  deriveFlavorText,
+  isAppraised,
+  observedRarity,
   // ── 交配 ──
   canBreed,
   doBreed,
@@ -80,3 +89,12 @@ export type { TickReport, Objective } from '../game/index.ts';
 export type { SaleQuote, SaleQuoteResult, SellResult } from '../game/index.ts';
 export type { FieldBehavior, FieldBehaviorKind, FieldGait, FieldMotion, FieldTickReport } from '../game/index.ts';
 export type { StaffTickReport } from '../game/index.ts';
+export type {
+  AppraisalAvailability,
+  AppraisalResult,
+  CategoricalGeneReport,
+  GeneticReport,
+  NumericGeneReport,
+  FlavorKind,
+  FlavorText,
+} from '../game/index.ts';

@@ -43,6 +43,7 @@ import {
   doCare,
   findCreature,
   getPhenotype,
+  observedRarity,
 } from '../gameApi.ts';
 
 /** 効き目が「ほぼ全開」とみなす倍率。 */
@@ -595,9 +596,15 @@ export function screenNursery(app: App, host: HTMLElement): Screen {
       sfx.play('grow');
       burstSparkles(stageEl, 20);
       toast(`${c.name} が 成体に なりました！`, 'good', 4200);
-      // 珍しい形質が出ていたら、それが分かる音を足す（成体で初めて確定する）。
+      // 【tier で鳴らさない — 音が鑑定より先に答えを言ってしまう】
+      //   以前は `rarity.tier` が rare / precious のときだけ鳴らしていた。
+      //   これは「この子は珍しい」を **確定情報として** 無料で渡す経路で、
+      //   詳細画面が「まだ分からない」と伏せている意味が無くなる。
+      //   鳴らす条件を **見た目に出ている珍しさ**（observedRarity と同じ材料）に
+      //   替える。プレイヤーが自分の目で気づけることを音が後押しするだけなので、
+      //   鑑定前に渡してよい情報の範囲に収まる。
       const pheno = getPhenotype(c, 'adult');
-      if (pheno.rarity.tier === 'rare' || pheno.rarity.tier === 'precious') {
+      if (observedRarity(pheno).label === 'かなり珍しそう') {
         window.setTimeout(() => sfx.play('rare'), 620);
       }
     }

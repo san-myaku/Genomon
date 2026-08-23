@@ -405,6 +405,29 @@ function artWindow(spec: CardSpec, extra = ''): string {
   );
 }
 
+/**
+ * カードに刷るフレーバー。
+ *
+ * 【lite では作らない】
+ *   一覧は 8〜30 枚を静止画として並べる場所で、そこでは 3〜4px の文字になり
+ *   読めない。読めない文字のために DOM を 30 枚ぶん増やさない。
+ *
+ * 【1 行に押し込めない】
+ *   以前は `white-space:nowrap` で 1 行に収め、あふれたら三点リーダで
+ *   切っていた。文の途中で切れると「意味ありげな一文」ではなく
+ *   「入りきらなかった文字列」に見える。2 行まで許して、収まる長さで組む。
+ */
+function flavorBlock(spec: CardSpec): string {
+  if (spec.quality === 'lite') return '';
+  const f = spec.facts.flavor;
+  return (
+    `<div class="gmc-flavor">` +
+    `<b>${esc(f.kind)}</b>` +
+    `<span>${esc(f.text)}</span>` +
+    `</div>`
+  );
+}
+
 function qrBlock(facts: CardFacts, ink: string, paper: string): string {
   return (
     `<div class="gmc-qr" title="${esc(facts.qrPayload)}（QR 風プレースホルダ・実 URL 未接続）">` +
@@ -478,6 +501,7 @@ function certifiedFront(spec: CardSpec): string {
       )
       .join('') +
     `</div>` +
+    flavorBlock(spec) +
     `<footer class="gmc-c-foot">` +
     `<div class="gmc-c-foottext"><b>GENOMON CERTIFIED</b>` +
     `<span>${esc(f.certifiedOn)} · GEN ${esc(f.generationRoman)} · ${esc(f.baseLabel)}</span></div>` +
@@ -549,6 +573,7 @@ function naturalFront(spec: CardSpec): string {
         `<span>${esc(f.showRecord.event)} · ${f.showRecord.year}</span></p>`
       : `<p class="gmc-n-show gmc-n-none"><span>NO RECORD ON FILE</span></p>`) +
     `</section>` +
+    flavorBlock(spec) +
     `<footer class="gmc-n-foot">` +
     `<div class="gmc-n-strip"><span>${esc(f.certId)}</span><i></i></div>` +
     qrBlock(f, skin.ink, skin.window) +
@@ -574,6 +599,7 @@ function collectorFront(spec: CardSpec): string {
     `</header>` +
     artWindow(spec) +
     `<div class="gmc-k-info">` +
+    flavorBlock(spec) +
     `<div class="gmc-k-name">${esc(f.code)}<em>${esc(f.name)}</em></div>` +
     `<div class="gmc-k-rule"></div>` +
     `<div class="gmc-k-stats">` +

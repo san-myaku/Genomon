@@ -553,7 +553,7 @@ function coerceCreature(x: unknown, now: number, index: number): Creature | null
   if (!genotype) return null;
 
   const seed = str(x['seed'], genotype.seed);
-  return {
+  const out: Creature = {
     id: str(x['id'], `recovered-${index}-${seed}`),
     seed,
     name: str(x['name'], 'ななしのゲノモン'),
@@ -572,6 +572,21 @@ function coerceCreature(x: unknown, now: number, index: number): Creature | null
     favorite: bool(x['favorite'], false),
     fromBreeding: bool(x['fromBreeding'], false),
   };
+
+  // ── 鑑定済みかどうか（appraisedAt）──────────────────────
+  //
+  // 【なぜ Creature 型に無いのに、ここで拾うのか】
+  //   鑑定状態は `Creature` の正式フィールドではなく、後方互換な追加キーとして
+  //   載せている（`game/grading.ts`）。通常の save → JSON → load では
+  //   そのまま往復するが、**この救出経路だけは 1 フィールドずつ組み直す**ので、
+  //   拾わなければ落ちる。プレイヤーから見れば「壊れたセーブを直したら、
+  //   お金を払った鑑定だけ無かったことになった」という最悪の消え方になる。
+  //   型を正式化するのが本筋だが、それは save/validate/migrate/createCreature/
+  //   released record まで一貫して直す作業なので、ここでは
+  //   **データを落とさないことだけ** を先に保証する。
+  const appraisedAt = num(x['appraisedAt'], 0, 0);
+  if (appraisedAt > 0) (out as Creature & { appraisedAt?: number }).appraisedAt = appraisedAt;
+  return out;
 }
 
 function coerceUnlocks(x: unknown, fallback: Unlocks): Unlocks {

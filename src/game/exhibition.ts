@@ -33,6 +33,7 @@ import type {
   Phenotype,
 } from '../core/types.ts';
 import { EXHIBITION, exhibitionCoins, rankOf } from './config.ts';
+import { isAppraised } from './grading.ts';
 import { getPhenotype } from './phenoCache.ts';
 import { findCreature, noteNow } from './state.ts';
 import { refreshUnlocks } from './unlocks.ts';
@@ -245,7 +246,13 @@ export function canExhibit(
  * その個体の具体的な特徴に触れるコメントを作る。
  * 「よかったですね」だけで終わらせず、必ず **この子の何を見たのか** を言う（指示書 §7）。
  */
-function specificComments(c: Creature, ph: Phenotype, life: LifeState, rng: Rng): string[] {
+function specificComments(
+  c: Creature,
+  ph: Phenotype,
+  life: LifeState,
+  rng: Rng,
+  appraised: boolean,
+): string[] {
   const out: string[] = [];
 
   const paletteLabel = ph.traits.find((t) => t.locus === 'palette')?.value;
@@ -278,9 +285,19 @@ function specificComments(c: Creature, ph: Phenotype, life: LifeState, rng: Rng)
     out.push(`かざりが ${n} か所。もう すこし 絞ってもよい。`);
   }
 
-  // ── 希少性について（Phenotype.rarity.reasons を そのまま活かす）──
-  const reason = ph.rarity.reasons[0];
-  if (reason) out.push(`めずらしさ: ${reason}。`);
+  // ── 希少性について ──
+  //
+  // 【未鑑定では reasons を出さない】
+  //   `rarity.reasons` は「めずらしい形質が 10 か所」「めずらしい『しんじゅ』の配色」など、
+  //   **鑑定でしか分からないはずの内訳そのもの**。審査員の口から出てしまうと、
+  //   詳細画面で伏せている意味が無くなる（鑑定所より先に展示会が答えを言う）。
+  //   鑑定済みの個体は証明書を提示している扱いなので、そのまま読み上げてよい。
+  if (appraised) {
+    const reason = ph.rarity.reasons[0];
+    if (reason) out.push(`めずらしさ: ${reason}。`);
+  } else if (ph.rarity.reasons.length > 0) {
+    out.push('めずらしさ: 気になる所はあるが、鑑定書が無いので断定はできない。');
+  }
 
   // ── 育成状態について ──
   if (life.cleanliness >= 80 && life.mood >= 75) {
@@ -331,6 +348,7 @@ export function runExhibition(state: GameState, creatureId: string, now: number)
 
   const ph = getPhenotype(c, 'adult');
   const life = c.life;
+  const appraised = isAppraised(c);
 
   const beauty = beautyScore(ph);
   const health = healthScore(ph, life);
@@ -359,7 +377,7 @@ export function runExhibition(state: GameState, creatureId: string, now: number)
   // ── 審査員とコメント ──
   const judge = rng.stream('judge').pick(EXHIBITION.judges);
   const line = rng.stream('line').pick(judge.lines[rank]);
-  const details = specificComments(c, ph, life, rng.stream('detail'));
+  const details = specificComments(c, ph, life, rng.stream('detail'), appraised);
   const comments = [line, ...details].slice(0, 5);
 
   // ── 反映 ──

@@ -18,13 +18,17 @@
  * 【姿を残すために遺伝情報ごと保存する】
  *   seed だけでは姿を再現できない（交配で生まれた子の遺伝子は親の組み合わせで決まる）。
  *   Genotype は不変・純データなのでそのまま持つ。1 体あたり 1.5KB 程度。
+ *
+ * 【鑑定状態も残す】
+ *   鑑定はコインを払う一度きりの操作なので、手放した記録から消えると
+ *   「払った証拠が無くなった」ことになる。appraisedAt の時刻だけ保存する。
  */
 
 import type { Creature, Genotype, LifeState, Stage } from '../core/types.ts';
+import { appraisedAtOf } from './gameApi.ts';
 
 /** UI 所有のキー。セーブ本体（genomon.save.v1）とは無関係。 */
 const KEY = 'genomon.ui.released.v1';
-
 /** 残す上限。古いものから捨てる（localStorage を食いつぶさないため）。 */
 const MAX = 40;
 
@@ -43,6 +47,8 @@ export interface ReleasedRecord {
   bornAt: number;
   releasedAt: number;
   genotype: Genotype;
+  /** 0/欠損なら未鑑定。旧記録との後方互換のため optional。 */
+  appraisedAt?: number;
 }
 
 /** 壊れた JSON・別バージョンの残骸を読んでも落ちないよう、形だけ確かめる。 */
@@ -105,6 +111,7 @@ export function recordRelease(c: Creature, now = Date.now()): void {
     bornAt: c.bornAt,
     releasedAt: now,
     genotype: c.genotype,
+    appraisedAt: appraisedAtOf(c),
   };
   const list = loadReleased().filter((r) => r.id !== c.id);
   list.unshift(rec);
@@ -139,7 +146,7 @@ export function releasedAsCreature(r: ReleasedRecord): Creature {
     lastTickAt: r.releasedAt,
     restingUntil: 0,
   };
-  return {
+  const c: Creature = {
     id: r.id,
     seed: r.seed,
     name: r.name,
@@ -156,6 +163,8 @@ export function releasedAsCreature(r: ReleasedRecord): Creature {
     favorite: false,
     fromBreeding: r.parentNames !== null,
   };
+  (c as Creature & { appraisedAt?: number }).appraisedAt = r.appraisedAt ?? 0;
+  return c;
 }
 
 /** 「7月28日 12:30」のような短い日付。記録は「いつ」が入って初めて記録になる。 */

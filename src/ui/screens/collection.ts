@@ -15,6 +15,11 @@
  *   枠は各段階 3 体しかなく、交配のたびに親を手放すことになる。
  *   手放した子が観察帳から消えると「続けるほど記録が減る観察帳」になってしまうので、
  *   UI 側の記録（releasedLog）をタブで並べる。姿は保存した遺伝情報から描き直す。
+ *
+ * 【鑑定前は伏せる】
+ *   正確な希少度で並べ替えたり rarity tier を表示したりしない。
+ *   並び順から exact score を逆算されるのも漏れなので、
+ *   「めずらしさ」の並べ替えは鑑定済み個体どうしだけで比べる。
  */
 
 import type { Creature } from '../../core/types.ts';
@@ -29,14 +34,14 @@ import { STAGE_LABEL, generationLabel } from '../format.ts';
 import { visibleRarity } from '../traits.ts';
 import { loadReleased, releasedAsCreature, releasedDateLabel } from '../releasedLog.ts';
 import type { ReleasedRecord } from '../releasedLog.ts';
-import { getPhenotype } from '../gameApi.ts';
+import { getPhenotype, isAppraised, observedRarity } from '../gameApi.ts';
 
 type SortKey = 'born' | 'stage' | 'rarity' | 'score' | 'name';
 
 const SORTS: readonly { key: SortKey; label: string }[] = [
   { key: 'born', label: '生まれた順' },
   { key: 'stage', label: '育ち順' },
-  { key: 'rarity', label: 'めずらしさ' },
+  { key: 'rarity', label: '鑑定済みの希少度' },
   { key: 'score', label: '展示会の点' },
   { key: 'name', label: '名前' },
 ];
@@ -64,10 +69,10 @@ export function screenCollection(app: App, host: HTMLElement): Screen {
             (STAGE_ORDER[b.life.stage] ?? 0) - (STAGE_ORDER[a.life.stage] ?? 0) || b.bornAt - a.bornAt,
         );
       case 'rarity':
-        // 希少度は成体基準の値なので、幼体・卵は後ろにまとめる（ネタバレ回避も兼ねる）。
+        // 未鑑定個体の exact score を並び順から逆算できないよう、鑑定済みだけ比較する。
         return list.sort((a, b) => {
-          const ra = a.life.stage === 'adult' ? getPhenotype(a, 'adult').rarity.score : -1;
-          const rb = b.life.stage === 'adult' ? getPhenotype(b, 'adult').rarity.score : -1;
+          const ra = a.life.stage === 'adult' && isAppraised(a) ? getPhenotype(a, 'adult').rarity.score : -1;
+          const rb = b.life.stage === 'adult' && isAppraised(b) ? getPhenotype(b, 'adult').rarity.score : -1;
           return rb - ra || b.bornAt - a.bornAt;
         });
       case 'score':
@@ -103,20 +108,25 @@ export function screenCollection(app: App, host: HTMLElement): Screen {
   function releasedCard(r: ReleasedRecord): string {
     const c = releasedAsCreature(r);
     const pheno = getPhenotype(c, r.stage);
+    const appraised = isAppraised(c);
+    const observed = observedRarity(pheno);
     const bits = [
       `${STAGE_LABEL[r.stage]}・${generationLabel(r.generation)}`,
       r.parentNames ? `親：${r.parentNames[0]} × ${r.parentNames[1]}` : '初代（親の いない子）',
       r.bestScore > 0 ? `展示会の 最高 ${Math.round(r.bestScore)} 点（${r.exhibitionCount} 回）` : '展示会には 出ていません',
+      appraised ? '鑑定済み' : '未鑑定',
       `世話 ${r.careCount} 回`,
       `${releasedDateLabel(r.releasedAt)} に 森へ`,
     ];
+    const rough = r.stage === 'adult' && !appraised ? `<span class="pill">${icon('spark')} ${esc(observed.label)}</span>` : '';
     return (
       `<div class="stack stack--s">` +
       `<div class="ccard ccard--released">` +
       `<span class="ccard__art" aria-hidden="true">${thumbSvg(pheno, c.life, `${r.name}`)}</span>` +
       `<span class="ccard__name">${esc(r.name)}</span>` +
       `<span class="ccard__meta">${icon('leaf')} 森へ かえした子</span>` +
-      `<span class="ccard__pills">${stagePill(r.stage)}${rarityPill(visibleRarity(pheno, r.stage), r.stage)}</span>` +
+      `<span class="ccard__pills">${stagePill(r.stage)}` +
+      `${rarityPill(appraised ? visibleRarity(pheno, r.stage) : null, r.stage)}${rough}</span>` +
       `</div>` +
       `<p class="section__note" style="margin:0;font-size:.76rem">${bits.map((b) => esc(b)).join('<br>')}</p>` +
       `</div>`
@@ -133,7 +143,7 @@ export function screenCollection(app: App, host: HTMLElement): Screen {
           : `<div class="grid-auto">${list.map((r) => releasedCard(r)).join('')}</div>`) +
         `<p class="section__note" style="margin-top:var(--sp-4)">` +
         `手放した子は もう 育てられませんが、姿と 記録は ここに のこります。` +
-        `その子の 特徴が どの 子孫に 受けつがれたかは、子の「親子の 比べっこ」で 見られます。</p>`
+        `鑑定してから手放した子は、鑑定済みの記録も残ります。</p>`
     );
   }
 
@@ -161,11 +171,22 @@ export function screenCollection(app: App, host: HTMLElement): Screen {
     const cards = list
       .map((c) => {
         const pheno = getPhenotype(c, c.life.stage);
+        const appraised = isAppraised(c);
+        const observed = observedRarity(pheno);
+        const rough = c.life.stage === 'adult' && !appraised
+          ? [`<span class="pill">${icon('spark')} ${esc(observed.label)}</span>`]
+          : appraised
+            ? [`<span class="pill pill--brass">${icon('helix')} 鑑定済み</span>`]
+            : [];
         return (
           `<div class="stack stack--s">` +
           creatureCard(c, pheno, {
             href: `#/detail/${encodeURIComponent(c.id)}`,
-            rarity: visibleRarity(pheno, c.life.stage),
+            rarity: appraised ? visibleRarity(pheno, c.life.stage) : null,
+            extraPills: rough,
+            // 卵・幼体は観察の札を出さないので、「？」の札はそのまま残す
+            // （札が 1 枚も無いと、伏せていることすら伝わらない）。
+            hideRarity: rough.length > 0,
             meta: `${STAGE_LABEL[c.life.stage]}・${generationLabel(c.generation)}${c.bestScore > 0 ? `・最高${Math.round(c.bestScore)}点` : ''}`,
           }) +
           `<p class="section__note" style="margin:0;font-size:.76rem">${esc(relationText(c))}</p>` +
@@ -195,7 +216,7 @@ export function screenCollection(app: App, host: HTMLElement): Screen {
           ? emptyState('egg', ['まだ 記録が ありません。', '育成室で ゲノモンを 育てましょう。'])
           : `<div class="grid-auto">${cards}</div>`) +
         `<p class="section__note" style="margin-top:var(--sp-4)">` +
-        `カードを 押すと、その子の くわしい 記録（遺伝・性格・親子の比較）を 見られます。</p>`,
+        `鑑定前は見た目からの印象だけを表示します。正確な希少度・潜在形質・全遺伝子は、個体の記録から鑑定すると開示されます。</p>`,
     );
   }
 

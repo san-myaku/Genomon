@@ -34,7 +34,7 @@ import { creatureCard, emptyState, lockedNotice } from '../components/bits.ts';
 import { toast } from '../components/toast.ts';
 import { num } from '../format.ts';
 import { visibleRarity } from '../traits.ts';
-import { canExhibit, creaturesByStage, getPhenotype, runExhibition, unlockHint } from '../gameApi.ts';
+import { canExhibit, creaturesByStage, getPhenotype, isAppraised, observedRarity, runExhibition, unlockHint } from '../gameApi.ts';
 
 /** 項目の見出し（ExhibitionScore のキーと対応）。 */
 const CRITERIA: readonly { key: keyof ExhibitionScore; label: string }[] = [
@@ -44,6 +44,15 @@ const CRITERIA: readonly { key: keyof ExhibitionScore; label: string }[] = [
   { key: 'character', label: '個性' },
   { key: 'rarity', label: '希少性' },
 ];
+
+/**
+ * 未鑑定の「希少性」バーの長さ。
+ * 数字を伏せてもバーの長さを測れば同じことなので、10 点刻みへ丸める。
+ * これで復元できるのは `rarity.score` にして 20 点幅の帯までになる。
+ */
+function roughRarityWidth(v: number): number {
+  return Math.round(v / 10) * 10;
+}
 
 const AUDIENCE = ['guestHat', 'guestGlasses', 'guestElder', 'guestChild', 'guestArtist', 'guestHat', 'guestGlasses'];
 
@@ -79,7 +88,13 @@ export function screenExhibition(app: App, host: HTMLElement): Screen {
           creatureCard(c, pheno, {
             action: 'enter',
             pressed: selected === c.id,
-            rarity: visibleRarity(pheno, 'adult'),
+            // 未鑑定の tier をここで出すと、詳細画面が「まだ分からない」と言っている
+            // すぐ隣で展示会が「ふつう」と断定してしまう。鑑定済みだけ正式な札を出す。
+            rarity: isAppraised(c) ? visibleRarity(pheno, 'adult') : null,
+            extraPills: isAppraised(c)
+              ? [`<span class="pill pill--brass">鑑定済み</span>`]
+              : [`<span class="pill">${icon('spark')} ${esc(observedRarity(pheno).label)}</span>`],
+            hideRarity: true,
             meta: c.exhibitionCount > 0 ? `出場 ${c.exhibitionCount} 回・最高 ${Math.round(c.bestScore)} 点` : 'はじめての 出場',
           }) +
           (chk.ok
@@ -98,7 +113,8 @@ export function screenExhibition(app: App, host: HTMLElement): Screen {
           : `<div class="grid-auto">${cards}</div>`) +
         `<p class="section__note" style="margin-top:var(--sp-4)">` +
         `点数は「美しさ・育成状態・健康状態・個性・希少性」の 5 項目。` +
-        `よく 世話を した子ほど 高く 出ます。</p>` +
+        `よく 世話を した子ほど 高く 出ます。` +
+        `未鑑定の子は、審査員も 見た目で しか 判断できないので、希少性の 点は 伏せられます。</p>` +
         lockedNotice(
           'オンラインの 品評会',
           'ほかの 人の ゲノモンと 競い合う 仕組みは、この版には 入っていません。今後の 更新で ひらきます。',
@@ -240,6 +256,14 @@ export function screenExhibition(app: App, host: HTMLElement): Screen {
     if (cancelled) return;
 
     // ③ 項目別評価（1 項目ずつ伸ばす）
+    //
+    // 【未鑑定では「希少性」の点数を数字で出さない — 逆算できてしまう】
+    //   希少性の点は `judgeScale(rarity.score/100, …)` の単調変換なので、
+    //   表示された整数から `rarity.score` をほぼそのまま復元できる。
+    //   詳細画面で伏せている正確な希少度が、展示会の結果画面から漏れる経路になる。
+    //   （総合点は ±6% のゆらぎが乗るので、そちらからの逆算は成立しない。）
+    //   鑑定済みの個体は証明書を出している扱いなので、数字で見せてよい。
+    const showRarityValue = isAppraised(c);
     const rows = CRITERIA.map(
       (cr) =>
         `<div class="score-row"><span class="score-row__k">${esc(cr.label)}</span>` +
@@ -261,8 +285,10 @@ export function screenExhibition(app: App, host: HTMLElement): Screen {
       const v = Math.round(Number(score[cr.key] ?? 0));
       const bar = host.querySelector<HTMLElement>(`[data-bar="${cr.key}"]`);
       const val = host.querySelector(`[data-val="${cr.key}"]`);
-      if (bar) bar.style.width = `${Math.max(0, Math.min(100, v))}%`;
-      if (val) val.textContent = String(v);
+      // バーは印象として残す（伸びる演出はこの画面の見どころ）。数字だけ伏せる。
+      const hide = cr.key === 'rarity' && !showRarityValue;
+      if (bar) bar.style.width = `${Math.max(0, Math.min(100, hide ? roughRarityWidth(v) : v))}%`;
+      if (val) val.textContent = hide ? '？' : String(v);
       sfx.play('tap');
       await beat(340);
     }

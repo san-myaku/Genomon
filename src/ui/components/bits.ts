@@ -51,7 +51,13 @@ export function gaugesFor(c: Creature): string {
 /** 希少度ピル。伏せる段階では「？」を出す。 */
 export function rarityPill(rarity: Rarity | null, stage: Stage): string {
   if (!rarity) {
-    return `<span class="pill" title="${stage === 'egg' ? 'たまごのうちは分かりません' : '成体になると分かります'}">${icon('spark')} めずらしさ ？</span>`;
+    const why =
+      stage === 'egg'
+        ? 'たまごのうちは分かりません'
+        : stage === 'juvenile'
+          ? '成体になると、見た目から少し分かるようになります'
+          : '正確な希少度は鑑定すると分かります';
+    return `<span class="pill" title="${esc(why)}">${icon('spark')} めずらしさ ？</span>`;
   }
   return `<span class="pill rar rar--${rarity.tier}">${icon('spark')} ${esc(RARITY_LABEL[rarity.tier])}</span>`;
 }
@@ -89,6 +95,14 @@ export interface CardOpts {
   meta?: string;
   /** 希少度を出すか（幼体では伏せる判断は呼び出し側でする）。 */
   rarity?: Rarity | null;
+  /**
+   * 「めずらしさ ？」の札そのものを出さない。
+   *
+   * 鑑定前の画面では extraPills 側に「まだ分からない／少し珍しそう」という
+   * 観察の札を出している。そこへ `？` の札まで並ぶと、同じことを言う札が
+   * 2 つ重なって読みにくい（実機で確認）。観察の札を出す画面はこちらを立てる。
+   */
+  hideRarity?: boolean;
   /** クリック対象の data 属性名。 */
   action?: string;
 }
@@ -96,7 +110,11 @@ export interface CardOpts {
 /** 個体カード（標本帳・展示会・交配で共通）。 */
 export function creatureCard(c: Creature, pheno: Phenotype, o: CardOpts = {}): string {
   const art = thumbSvg(pheno, c.life, `${c.name}（${STAGE_LABEL[c.life.stage]}）`);
-  const pills = [stagePill(c.life.stage), rarityPill(o.rarity ?? null, c.life.stage), ...(o.extraPills ?? [])].join('');
+  const pills = [
+    stagePill(c.life.stage),
+    ...(o.hideRarity && !o.rarity ? [] : [rarityPill(o.rarity ?? null, c.life.stage)]),
+    ...(o.extraPills ?? []),
+  ].join('');
   const meta = o.meta ?? `${generationLabel(c.generation)}${c.bestScore > 0 ? ` / 最高${Math.round(c.bestScore)}点` : ''}`;
   // 絵は aria-hidden。SVG 内の <style> が textContent に混じり、
   // 読み上げソフトが CSS を読んでしまうのを防ぐ（名前は下の span で読める）。
