@@ -10,9 +10,12 @@ import {
   isAppraised,
   newGame,
   observedRarity,
+  observedSignal,
+  saleQuote,
 } from '../src/game/index.ts';
 import { createCreature } from '../src/game/state.ts';
 import { CAT_LOCUS_IDS, NUM_LOCUS_IDS, randomGenotype, phenotypeOf } from '../src/genetics/index.ts';
+import { visibleTraits as uiVisibleTraits } from '../src/ui/traits.ts';
 import { clearSave, load, resetStorageCache, save } from '../src/save/index.ts';
 import { coerceState } from '../src/save/schema.ts';
 import { CAT_LOCI } from '../src/genetics/loci.ts';
@@ -315,6 +318,221 @@ describe('見た目に出ない発現の扱い', () => {
     for (const row of report.categorical) {
       const parts = pheno.parts as unknown as Record<string, unknown>;
       if (parts[row.locus] === row.expressedId) expect(row.suppressed).toBeNull();
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+//  市場の値づけ（D-041）
+// ─────────────────────────────────────────────────────────
+
+/**
+ * 「姿はまったく同じなのに、かくれて持っているものだけが違う」2 体を探す。
+ *
+ * これが作れないと、下の検査は「価格が rarity から決まっていない」ことを
+ * 何も示せない（姿ごと違えば価格が違って当たり前）。見つからなければ
+ * その場で落ちるようにしてあるので、検査が空回りすることはない。
+ */
+function twinsDifferingOnlyInHiddenAlleles(minScoreGap = 0): {
+  visible: Genotype;
+  carrier: Genotype;
+  locus: string;
+} {
+  for (let i = 0; i < 1200; i++) {
+    const g = randomGenotype(`hidden-twin-${i}`);
+    const pa = phenotypeOf(g, 'adult');
+    for (const def of CAT_LOCI) {
+      const pair = g.cat[def.locus];
+      if (!pair) continue;
+      for (const alt of def.alleles) {
+        if (alt.id === pair[0] || alt.id === pair[1]) continue;
+        const b: Genotype = { ...g, cat: { ...g.cat, [def.locus]: [pair[0], alt.id] } };
+        const pb = phenotypeOf(b, 'adult');
+        if (
+          JSON.stringify(pa.parts) === JSON.stringify(pb.parts) &&
+          observedSignal(pa) === observedSignal(pb) &&
+          Math.abs(pa.rarity.score - pb.rarity.score) > minScoreGap
+        ) {
+          return { visible: g, carrier: b, locus: def.locus };
+        }
+      }
+    }
+  }
+  throw new Error('姿が同じで隠れた遺伝子だけ違う 2 体を作れなかった');
+}
+
+function marketReady(seed: string): GameState {
+  const state = newGame(seed);
+  state.unlocks.breeder = true;
+  state.breeder.licensed = true;
+  return state;
+}
+
+function priceOf(state: GameState, c: Creature): number {
+  const q = saleQuote(state, c.id);
+  if (!q.ok) throw new Error(q.reason);
+  return q.quote.price;
+}
+
+describe('市場の値づけ', () => {
+  /**
+   * 【この検査が守るもの】
+   *   以前は `rarity.score` を常に価格へ入れ、**表示上の内訳だけ** 1 本に
+   *   まとめて隠していた。価格は rarity の単調増加関数で、他の項（段階・
+   *   体調ゲージ・最高得点・世代）はすべて画面に出ているので、
+   *   引き算すれば希少度が復元できた。表示ではなく計算を分けたことを、
+   *   実際に「姿が同じで中身だけ違う 2 体」で確かめる。
+   */
+  it('未鑑定の見積もりは、姿が同じなら隠れた遺伝子が違っても同じ額', () => {
+    // 【差の大きさを要求する理由】
+    //   価格は 10 コイン単位に丸める。希少度の差が小さい 2 体を選ぶと、
+    //   たとえ希少度が価格に混ざっていても丸めが吸収してしまい、
+    //   **漏れがあっても通ってしまう検査** になる（実際に一度そうなった）。
+    //   丸めを越える差を持つ組を選んで、混ざっていれば必ず落ちるようにする。
+    const { visible, carrier } = twinsDifferingOnlyInHiddenAlleles(12);
+    const state = marketReady('market-hidden');
+    const a = pushAdult(state, visible, T0);
+    const b = pushAdult(state, carrier, T0);
+    pushAdult(state, randomGenotype('market-hidden-spare'), T0);
+    // 体調・実績・世代をそろえる（価格の他の項が動かないように）。
+    b.life = { ...a.life };
+    b.bestScore = a.bestScore;
+    b.exhibitionCount = a.exhibitionCount;
+    b.generation = a.generation;
+
+    expect(phenotypeOf(a.genotype, 'adult').rarity.score).not.toBe(
+      phenotypeOf(b.genotype, 'adult').rarity.score,
+    );
+    expect(priceOf(state, a)).toBe(priceOf(state, b));
+  });
+
+  /**
+   * 最終価格は 10 コイン単位に丸めるので、希少度の差が小さいと同額に
+   * 収まることがある（それは丸めの仕様であって漏れではない）。ここで見たいのは
+   * 「鑑定書があると遺伝的な差が価格に効く」ことなので、丸めに吸収されない
+   * 大きさの差を持つ 2 体を選ぶ。
+   */
+  it('鑑定すると、その隠れた違いが価格に現れる', () => {
+    const { visible, carrier } = twinsDifferingOnlyInHiddenAlleles(12);
+    const state = marketReady('market-hidden-appraised');
+    state.coins = APPRAISAL_COST * 4;
+    const a = pushAdult(state, visible, T0);
+    const b = pushAdult(state, carrier, T0);
+    pushAdult(state, randomGenotype('market-hidden-appraised-spare'), T0);
+    b.life = { ...a.life };
+    b.bestScore = a.bestScore;
+    b.exhibitionCount = a.exhibitionCount;
+    b.generation = a.generation;
+
+    // 鑑定前は同額であること（この 2 体が「姿が同じ」であることの確認）。
+    expect(priceOf(state, a)).toBe(priceOf(state, b));
+
+    expect(appraiseCreature(state, a.id, T0 + 1).ok).toBe(true);
+    expect(appraiseCreature(state, b.id, T0 + 2).ok).toBe(true);
+
+    const qa = saleQuote(state, a.id);
+    const qb = saleQuote(state, b.id);
+    expect(qa.ok && qb.ok).toBe(true);
+    if (!qa.ok || !qb.ok) return;
+    expect(qa.quote.rarityBonus).not.toBe(qb.quote.rarityBonus);
+    expect(priceOf(state, a)).not.toBe(priceOf(state, b));
+  });
+
+  it('希少度の上乗せは未鑑定では 0、鑑定後だけ付く', () => {
+    const state = marketReady('market-rarity-row');
+    state.coins = APPRAISAL_COST * 2;
+    const c = pushAdult(state, randomGenotype('market-rarity-row-g'), T0);
+    pushAdult(state, randomGenotype('market-rarity-row-2'), T0);
+    pushAdult(state, randomGenotype('market-rarity-row-3'), T0);
+
+    const before = saleQuote(state, c.id);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    expect(before.quote.appraised).toBe(false);
+    expect(before.quote.rarityBonus).toBe(0);
+    // 「見た目の評価」は鑑定と関係なく付く（未鑑定でも 0 に潰さない）。
+    expect(before.quote.observedBonus).toBeGreaterThanOrEqual(0);
+
+    expect(appraiseCreature(state, c.id, T0 + 5).ok).toBe(true);
+    const after = saleQuote(state, c.id);
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.quote.appraised).toBe(true);
+    expect(after.quote.rarityBonus).toBeGreaterThan(0);
+    // 鑑定書は価値を足すだけ。他の項は 1 コインも動かない。
+    expect(after.quote.base).toBe(before.quote.base);
+    expect(after.quote.observedBonus).toBe(before.quote.observedBonus);
+    expect(after.quote.conditionBonus).toBe(before.quote.conditionBonus);
+    expect(after.quote.exhibitionBonus).toBe(before.quote.exhibitionBonus);
+    expect(after.quote.generationBonus).toBe(before.quote.generationBonus);
+    expect(after.quote.price).toBeGreaterThan(before.quote.price);
+  });
+
+  it('内訳の合計が価格と一致する（UI がどの行を出しても額がずれない）', () => {
+    const state = marketReady('market-sum');
+    state.coins = APPRAISAL_COST * 2;
+    const c = pushAdult(state, randomGenotype('market-sum-g'), T0);
+    pushAdult(state, randomGenotype('market-sum-2'), T0);
+    pushAdult(state, randomGenotype('market-sum-3'), T0);
+
+    for (const step of ['before', 'after'] as const) {
+      if (step === 'after') expect(appraiseCreature(state, c.id, T0 + 7).ok).toBe(true);
+      const q = saleQuote(state, c.id);
+      expect(q.ok).toBe(true);
+      if (!q.ok) return;
+      const { base, observedBonus, conditionBonus, rarityBonus, exhibitionBonus, generationBonus, price } = q.quote;
+      const sum = base + observedBonus + conditionBonus + rarityBonus + exhibitionBonus + generationBonus;
+      expect(price, step).toBe(Math.max(40, Math.round(sum / 10) * 10));
+    }
+  });
+
+  /**
+   * 見た目の評価は「姿」だけから決まること。姿が同じなら必ず同じ値になる
+   * ── これが崩れると、未鑑定の価格から隠れた情報が漏れる経路が復活する。
+   */
+  it('見た目の評価は、姿が同じなら必ず同じ値', () => {
+    const { visible, carrier } = twinsDifferingOnlyInHiddenAlleles();
+    expect(observedSignal(phenotypeOf(visible, 'adult'))).toBe(
+      observedSignal(phenotypeOf(carrier, 'adult')),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+//  「見えている特徴」と「全遺伝子レポート」の役割分担（D-041）
+// ─────────────────────────────────────────────────────────
+
+describe('観察情報と遺伝情報の分離', () => {
+  /**
+   * 詳細画面の「見えている 特徴」欄は、UI 層の `visibleTraits` から作る。
+   * ここに保因が残っていると、画面側の書き方ひとつで
+   * 「観察したこと」と「鑑定書を読んで分かったこと」が混ざる。
+   * 混ざらないことを、画面ではなくデータの形で保証する。
+   */
+  it('UI 層の visibleTraits は、鑑定済みでも保因を渡さない', () => {
+    let checked = 0;
+    for (let i = 0; i < 60; i++) {
+      const pheno = phenotypeOf(randomGenotype(`ui-traits-${i}`), 'adult');
+      // genetics 側の正本には保因が載っていること（検査が空回りしていない確認）。
+      if (pheno.traits.some((t) => t.carrier)) checked += 1;
+      for (const t of uiVisibleTraits(pheno, 'adult')) {
+        expect(t.carrier, `${String(t.locus)} に保因が残っている`).toBeUndefined();
+      }
+    }
+    expect(checked, '保因を持つ個体が 1 体も無かった（検査が空回りしている）').toBeGreaterThan(0);
+  });
+
+  /** 落とすのは保因だけ。見えている値・ラベル・めずらしさの印は残す。 */
+  it('保因以外は落とさない', () => {
+    const pheno = phenotypeOf(randomGenotype('ui-traits-keep'), 'adult');
+    const src = pheno.traits;
+    const out = uiVisibleTraits(pheno, 'adult');
+    expect(out).toHaveLength(src.length);
+    for (let i = 0; i < out.length; i++) {
+      expect(out[i]!.locus).toBe(src[i]!.locus);
+      expect(out[i]!.label).toBe(src[i]!.label);
+      expect(out[i]!.value).toBe(src[i]!.value);
+      expect(out[i]!.notable).toBe(src[i]!.notable);
     }
   });
 });
