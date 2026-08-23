@@ -5,9 +5,10 @@
  * 確認操作だけを担当する。確認前に状態を変更しないので、画面更新や二重クリック
  * があっても「見積もりと実際の入金がずれる」事故を避けられる。
  *
- * 市場価格そのものは未鑑定でも提示するが、「希少度が何コイン分か」という
- * 内訳は鑑定後だけ開示する。価格から完全に価値を隠すのではなく、
- * 市場の反応をヒントとして残す設計。
+ * 未鑑定の見積もりには遺伝的な希少度が **1 コインも入っていない**
+ * （`game/market.ts`）。入っていないので、内訳もぼかさずそのまま出せる。
+ * 以前は価格に混ぜたうえで表示だけまとめていたが、他の項が全部見えている
+ * 以上、引き算で復元できてしまっていた。
  */
 
 import type { Creature, SaleRecord } from '../../core/types.ts';
@@ -46,24 +47,17 @@ function historyRow(record: SaleRecord): string {
 }
 
 export function screenMarket(app: App, host: HTMLElement): Screen {
-  function quoteBreakdown(quote: SaleQuote, appraised: boolean): string {
-    if (appraised) {
-      return (
-        `<dl class="market-quote">` +
-        quoteRow('基本価格', quote.base) +
-        quoteRow('コンディション', quote.conditionBonus) +
-        quoteRow('めずらしさ', quote.rarityBonus) +
-        quoteRow('展示実績', quote.exhibitionBonus) +
-        quoteRow('世代ボーナス', quote.generationBonus) +
-        `</dl>`
-      );
-    }
-    // 希少度だけを引き算して逆算できないよう、各種補正を1本にまとめる。
-    const adjustments = quote.conditionBonus + quote.rarityBonus + quote.exhibitionBonus + quote.generationBonus;
+  function quoteBreakdown(quote: SaleQuote): string {
     return (
       `<dl class="market-quote">` +
       quoteRow('基本価格', quote.base) +
-      quoteRow('市場評価（内訳未鑑定）', adjustments) +
+      quoteRow('見た目の評価', quote.observedBonus) +
+      quoteRow('コンディション', quote.conditionBonus) +
+      quoteRow('展示実績', quote.exhibitionBonus) +
+      quoteRow('世代ボーナス', quote.generationBonus) +
+      // 鑑定書つきのときだけ現れる行。未鑑定では 0 なので、行ごと出さない
+      // （「0 コイン」と出すと、鑑定すれば必ず上がる額があると読める）。
+      (quote.appraised ? quoteRow('鑑定書つきの遺伝的希少価値', quote.rarityBonus) : '') +
       `</dl>`
     );
   }
@@ -95,9 +89,9 @@ export function screenMarket(app: App, host: HTMLElement): Screen {
       `<div class="market-candidate__info"><p class="market-candidate__meta">${esc(generationLabel(c.generation))} ／ 展示 ${c.exhibitionCount} 回</p>` +
       `<div class="market-candidate__price"><span>見積もり</span><strong>${num(quote.price)}</strong><small>コイン</small></div>` +
       `</div></div>` +
-      quoteBreakdown(quote, appraised) +
+      quoteBreakdown(quote) +
       (!appraised
-        ? `<p class="section__note" style="margin:var(--sp-2) 0">市場は見た目や実績を含めて値を付けますが、希少度の正確な寄与は鑑定するまで分かりません。</p>`
+        ? `<p class="section__note" style="margin:var(--sp-2) 0">鑑定書が ないので、市場は 見た目・体調・実績だけで 値を付けています。鑑定すると 遺伝的な めずらしさが 評価に 加わります。</p>`
         : '') +
       `<button type="button" class="btn btn--brass market-candidate__sell" data-sell="${esc(c.id)}">この子を 売る</button>` +
       `</article>`

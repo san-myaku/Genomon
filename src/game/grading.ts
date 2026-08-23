@@ -98,14 +98,46 @@ export interface ObservedRarity {
 }
 
 /**
- * 正確な rarity.score を使わず、外から見える notable 形質だけで印象を返す。
- * そのため見た目は普通でも、鑑定すると希少な保因個体だった、が起こり得る。
+ * 「外から見て、目を引く点がいくつあるか」。0 以上の整数。
+ *
+ * 【`rarity.score` を一切見ない】
+ *   あちらは保因・接合状態・数値形質のふるまいまで含んだ、鑑定して初めて
+ *   分かる値。ここは **姿だけ** から数える。だから見た目は普通なのに
+ *   鑑定すると希少な保因個体だった、が起こり得る（それが鑑定の意味）。
+ *
+ * 【`traits` ではなく `parts`（実際に描かれた対立遺伝子）を数える】
+ *   遺伝的に発現していても、素体の都合で描かれない形質がある
+ *   （スライムの羽、耳の無い個体の耳先色、まる素体に吸収される足）。
+ *   `traits` の notable を数えると **画面に無いものを数えてしまう**。
+ *   1500 体で測ったところ 18% の個体で数が変わる ── 無視できない差。
+ *   `parts` に無い座（素体・配色・目の数）はそのまま姿に出ているので
+ *   `traits` 側から数える。
+ *
+ * 見積もり（`game/market.ts`）にも使うので、ここは観察できる情報だけで
+ * 閉じていること。
  */
-export function observedRarity(pheno: Phenotype): ObservedRarity {
-  const visibleNotable = pheno.traits.filter((t) => t.notable).length;
+export function observedSignal(pheno: Phenotype): number {
+  const parts = pheno.parts as unknown as Record<string, unknown>;
+  let notable = 0;
+  for (const def of CAT_LOCI) {
+    const drawn = parts[def.locus];
+    if (typeof drawn === 'string') {
+      if (alleleDef(def.locus, drawn)?.notable) notable += 1;
+      continue;
+    }
+    if (pheno.traits.find((t) => t.locus === def.locus)?.notable) notable += 1;
+  }
   const unusualMaterial = Number(pheno.parts.texture === 'mineral' || pheno.parts.texture === 'glassy');
   const unusualLight = Number(pheno.parts.lumin !== 'none' && pheno.glow > 0.45);
-  const signal = visibleNotable + unusualMaterial + unusualLight;
+  return notable + unusualMaterial + unusualLight;
+}
+
+/**
+ * 鑑定前に出してよい、姿だけの印象。
+ * 正確な希少度（`rarity.score` / `tier`）は決して混ぜない。
+ */
+export function observedRarity(pheno: Phenotype): ObservedRarity {
+  const signal = observedSignal(pheno);
 
   if (signal >= 4) return { label: 'かなり珍しそう', note: '見た目だけでも、珍しい特徴がいくつも確認できます。' };
   if (signal >= 2) return { label: '珍しそう', note: '目につく特徴があります。正確な希少度は鑑定しないと分かりません。' };

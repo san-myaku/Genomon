@@ -60,6 +60,7 @@ export {
   deriveGeneticReport,
   isAppraised,
   observedRarity,
+  observedSignal,
   type AppraisalAvailability,
   type AppraisalResult,
   type CategoricalGeneReport,
