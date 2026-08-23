@@ -104,6 +104,24 @@ node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/
 `tests/coat.test.ts` が「体と同じ形を線として描き直しているパーツが無いこと」を
 260 個体で機械的に見ている。
 
+### 2.7. 耳の「中身」は外周でクリップし、外周を縮めた形にする
+
+内耳の面・耳先の色は、`center` と `reach`／`lift` から独立に置くと必ず
+外周を割る（まるみみは背景の上へ、たれみみは頭の上へ出ていた。経緯は
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) の **D-039**）。
+`integratedEar`（`render/parts/ears.ts`）に中身を足すときは:
+
+1. 必ず `inEar()` を通す（耳の塗り `fillPath` でクリップする）
+2. 面は `shrunkEar()` を使う（外周そのものを相似縮小するので、中身が
+   外周と同じ曲がりかたをする）
+3. 縮小の中心は `hub`（`open` の通過点＋制御点の平均）。`center` と
+   `apex` の中間で代用しない ── ふくらみを作っているのは制御点なので、
+   中間点は実際の面の中心よりかなり内側へ来る
+
+`tests/render.test.ts` の `scaledStroke()` が「縮小したグループの中に
+`stroke=` を入れていないこと」を見ている（線を一緒に縮めると耳の輪郭の
+太さが体の輪郭と合わなくなる）。
+
 ### 2.8. 鑑定前に「確定した希少度」を出さない
 
 `rarity.score` / `rarity.tier` / `rarity.reasons` は **鑑定済み個体だけ** に出す
@@ -138,7 +156,7 @@ node tools/genLashSprites.mjs   # art/eyelashes_sprite.svg → src/render/parts/
 
 ```bash
 npx tsc --noEmit     # 型チェック
-npx vitest run       # ユニットテスト（現在 250 件・18 ファイル）
+npx vitest run       # ユニットテスト（現在 255 件・18 ファイル）
 npx vite build       # 本番ビルド（dist/ に index.html 系だけが出ること）
 npx playwright test  # e2e（初回は `npx playwright install chromium` が要る）
 ```

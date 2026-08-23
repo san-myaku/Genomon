@@ -74,6 +74,8 @@ function safeParts(pheno: Phenotype): Phenotype['parts'] {
     eyeCount: clamp(Math.round(p.eyeCount ?? 2), 1, 3),
     eyeShape: p.eyeShape ?? 'round',
     pupil: p.pupil ?? 'round',
+    eyeGlint: p.eyeGlint ?? 'none',
+    irisTone: p.irisTone ?? 'none',
     lashes: p.lashes ?? 'none',
     mouth: p.mouth ?? 'smile',
     ears: p.ears ?? 'none',

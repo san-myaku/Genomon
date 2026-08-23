@@ -68,12 +68,12 @@ E2E の主要な検査は、実際に一度壊した箇所の回帰テスト。
 |---|---|---|
 | `tests/save.test.ts` | 69 | 保存/読込・破損復旧・バックアップ・チェックサム・ショップ整合性 |
 | `tests/migrate.test.ts` | 32 | v1→…→v7 連鎖マイグレーション |
-| `tests/genetics.test.ts` | 25 | seed再現性・表現型変換・500体生成・支配的形質の検査 |
+| `tests/genetics.test.ts` | 25 | seed再現性・表現型変換・500体生成・支配的形質の検査（`eyeGlint`／`irisTone` は「稀に」が要件なので `DEFAULT_HEAVY` 側） |
 | `tests/breeding.test.ts` | 17 | 交配・優性潜性・突然変異・親子/兄弟類似性・多世代多様性・希少度分布 |
 | `tests/game.test.ts` | 13 | 世話・展示会・ショップ・クールダウン永続化 |
 | `tests/cards.test.ts` | 12 | カードの決定論・CSS の制御文字と波かっこの対応 |
 | `tests/field.test.ts` | 11 | 飼育フィールドの生活状態・排泄物・配置 |
-| `tests/render.test.ts` | 11 | 1000 体で描画不良・非決定的 SVG を出さないこと |
+| `tests/render.test.ts` | 11 | 1000 体で描画不良・非決定的 SVG を出さないこと／耳は **縮小したグループの中に `stroke=` を入れない**（`scaledStroke`。内耳の面は外周の相似縮小なので `scale(` 自体は出る。D-039） |
 | `tests/inspect.test.ts` | 9 | **描画の自動検査そのものの検査**（見逃しと誤検出の両方を固定） |
 | `tests/lashes.test.ts` | 9 | まつげと目の位置関係・体からのはみ出しを増やさないこと |
 | `tests/coat.test.ts` | 8 | 体毛が viewBox と接地線を越えないこと・種類の描き分け・不良を増やさないこと |

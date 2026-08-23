@@ -354,8 +354,56 @@ function eyeScleraGradient(ctx: DrawCtx, index: number, base: string): string {
   return url(id);
 }
 
-/** 虹彩の共通質感。瞳孔を置かず、中心の柔らかい明るさと周縁の深さだけを出す。 */
+/**
+ * 稀な形質『ふたいろ』（`irisTone` = duo）の相方の色。
+ *
+ * 【色相をずらして作る — 配色ファミリーから別の色を借りない】
+ *   `accent` や `petal` を相方にすると、装飾（角・花・首かざり）と同じ色が
+ *   目の中に入る。目だけが「その子の別の場所の色」を持つと、
+ *   グラデではなく **模様が映り込んでいる** ように読める。
+ *   虹彩そのものの色相を回して作れば、どの配色でも必ず隣り合う 2 色になり、
+ *   濁らない。ずらし量は名前付き乱数（`Math.random()` は使わない）で
+ *   4 通りから選ぶ。左右の目は同じ系列を引くので同じ向きにずれる。
+ *
+ * 【明度に上限を置く理由】
+ *   べた目（たまご）では虹彩がそのまま体と隣り合う。相方だけ明るいと
+ *   目の上半分が白く飛んで「白目が戻った」ように見える。
+ *   `tallEyeFill` が本体側を 30〜60 に収めているので、相方も 66 で頭打ちにする。
+ */
+function duoIrisPartner(ctx: DrawCtx, base: string): string {
+  const h = hexToHsl(base);
+  const shift = ctx.rng('irisTone').pick([-74, -46, 46, 74]);
+  return hslToHex(
+    (h.h + shift + 360) % 360,
+    clamp(h.s * 1.06, 36, 82),
+    clamp(h.l + 15, 38, 66),
+  );
+}
+
+/**
+ * 虹彩の共通質感。瞳孔を置かず、中心の柔らかい明るさと周縁の深さだけを出す。
+ *
+ * 【『ふたいろ』だけ放射ではなく線形にする理由】
+ *   既定の放射グラデーションは「球の照り」を作るためのもので、中心から
+ *   同心に色が変わる。ここへ 2 色目を入れると **輪の模様**（＝『わっか』の
+ *   意匠）に見えてしまい、グラデーションとして読めない。
+ *   上から下へ流れる線形にすると、2 色が混ざる帯が 1 本だけできて
+ *   「上が〇色・下が〇色」と読める。球に見せるぶんはハイライトの丸が担う。
+ */
 function eyeIrisGradient(ctx: DrawCtx, index: number, base: string): string {
+  if (ctx.parts.irisTone === 'duo') {
+    const top = duoIrisPartner(ctx, base);
+    const id = ctx.defs.add(`eyeIris${index}`, (gid) =>
+      `<linearGradient id="${gid}" x1="6%" y1="0%" x2="26%" y2="100%">` +
+      `<stop offset="0%" stop-color="${mix('#fffdf8', top, 0.3)}"/>` +
+      `<stop offset="26%" stop-color="${top}"/>` +
+      `<stop offset="58%" stop-color="${mix(top, base, 0.5)}"/>` +
+      `<stop offset="86%" stop-color="${base}"/>` +
+      `<stop offset="100%" stop-color="${darken(base, 0.32)}"/>` +
+      `</linearGradient>`,
+    );
+    return url(id);
+  }
   const id = ctx.defs.add(`eyeIris${index}`, (gid) =>
     `<radialGradient id="${gid}" cx="30%" cy="23%" r="86%">` +
     `<stop offset="0%" stop-color="${mix('#fffdf8', base, 0.2)}"/>` +
@@ -459,6 +507,10 @@ function drawSolidEye(ctx: DrawCtx, slot: EyeSlot, shapeId: string, iris: string
   }
   // 虹彩色をわずかに落として「黒目一色」に見えないようにする
   g += ellipse(0, ry * 0.1, rx * 0.42, ry * 0.34, { fill: darken(iris, 0.18), opacity: 0.3 });
+  // 稀な形質『きらり』。点目は面が 1 つしかないので、右下の余白へ小さく置く。
+  if (ctx.parts.eyeGlint === 'star') {
+    g += glintMarkup(ctx, rx * 0.3, ry * 0.24, Math.min(rx, ry) * 0.26);
+  }
   return g;
 }
 
@@ -499,11 +551,28 @@ interface MotifCtx {
 function motifMarkup(kind: string, m: MotifCtx): string {
   const { s, py, deep, light, face } = m;
   switch (kind) {
-    case 'round':
-      // まるい: 無地を保ったまま、中央へごく薄い色の溜まりだけを置く。
+    case 'round': {
+      // まるい: 無地を保ったまま、中央へ色の溜まりだけを置く。
       // 濃い一点は置かないので、視線の圧を強めず、単色の円っぽさだけを
       // 解消する。外周の輪と合わせて「虹彩の面」として読ませる。
-      return ellipse(0, py + s * 0.08, s * 0.48, s * 0.32, { fill: deep, opacity: 0.14 });
+      //
+      // 【2026-08-22 製品オーナーの指示 2 件】
+      //   「真ん中の楕円のちょっと色濃い部分、もう少し色濃くしてほしい」
+      //   「この楕円の部分が真円の個体もいるようにしてほしい」
+      //
+      //   濃さ … 0.14 → 0.32。**色は `deep`（面の色を落としたもの）のまま**
+      //     上げるのは不透明度だけにする。ここにインクや黒を置くと
+      //     廃止したはずの瞳孔が戻り、目が「見つめてくる」ようになる。
+      //   形 … 個体ごとに 横長の楕円／真円 を切り替える。名前付き乱数を使い
+      //     `Math.random()` は使わない（同じ個体は毎回同じ絵になる）。
+      //     左右の目は同じ名前の系列（`eyeMotif`）を引くので必ず同じ形に
+      //     なる ＝ 目が「対」に見える。面積がほぼ変わらない半径にして
+      //     あるので、どちらでも濃さの印象は揃う。
+      const perfectCircle = m.rng.bool();
+      const rw = perfectCircle ? s * 0.4 : s * 0.48;
+      const rh = perfectCircle ? s * 0.4 : s * 0.32;
+      return ellipse(0, py + s * 0.08, rw, rh, { fill: deep, opacity: 0.32 });
+    }
 
     case 'slit': {
       // たてぼそ: 面を縦に横切るやわらかい帯。
@@ -780,6 +849,53 @@ function roundedStarPath(cx: number, cy: number, rOuter: number, rInner: number,
   return `${d}Z`;
 }
 
+/**
+ * 稀な形質『きらり』（`eyeGlint` = star）のきらめき。
+ *
+ * 【なぜ既定のハイライトと別に置くのか】
+ *   既定のハイライトは「96px で目が黒い穴に見えない」ための担保で、
+ *   全個体に 1 つだけ・丸い光と決まっている（そこを増やすと全個体が
+ *   同じキラキラ目になる、というのが `drawEye` の約束）。
+ *   ここは **20 体に 1 体しか出ない飾り** なので、丸ではなく 4 方向の星に
+ *   して既定の光と読み分けられるようにし、位置も既定の光（左上）とは
+ *   反対の右下寄りに置く。大小 2 つ並べて初めて「キラキラ」に読める。
+ *
+ * 【尖った星にしない】
+ *   `starPath` ではなく `roundedStarPath` を使う。小さいので、角の尖った
+ *   星は 96px でただの三角形に潰れる（`ほしぞら` の星で実測済み）。
+ */
+function glintMarkup(ctx: DrawCtx, cx: number, cy: number, r: number): string {
+  // 星の裏に置く、ごく薄い光のにじみ。これがあると「白い図形が貼ってある」から
+  // 「光っている」に変わる。
+  //
+  // 【一様な円ではなく放射グラデーションにする理由】
+  //   不透明度を落としただけの円は縁がはっきり出るので、光ではなく
+  //   **白い水玉** に見える（実際にそう見えたので直した）。外へ向けて
+  //   透明へ抜くと、初めてにじみとして読める。
+  //   濃くすると面の色（＝その子の配色）が白く飛ぶので中心でも 0.5 まで。
+  const halo = ctx.defs.add('glintHalo', (id) =>
+    `<radialGradient id="${id}">` +
+    `<stop offset="0%" stop-color="#fffdf8" stop-opacity="0.5"/>` +
+    `<stop offset="46%" stop-color="#fffdf8" stop-opacity="0.17"/>` +
+    `<stop offset="100%" stop-color="#fffdf8" stop-opacity="0"/>` +
+    `</radialGradient>`,
+  );
+  let g = circle(cx, cy, r * 2.1, { fill: url(halo) });
+  // 主星。
+  g += path(roundedStarPath(cx, cy, r, r * 0.28, 4, -90), { fill: '#fffdf8' });
+  // 副星 2 つ。主星から見て右下と左上へ振り、大きさを変えて散らす。
+  // 同じ大きさで並べると「点線」に見えて、きらめきにならない。
+  g += path(roundedStarPath(cx + r * 1.2, cy + r * 1.0, r * 0.52, r * 0.15, 4, -90), {
+    fill: '#fffdf8',
+    opacity: 0.92,
+  });
+  g += path(roundedStarPath(cx - r * 1.05, cy + r * 0.86, r * 0.36, r * 0.1, 4, -90), {
+    fill: '#fffdf8',
+    opacity: 0.85,
+  });
+  return g;
+}
+
 /** 3 次ベジェ曲線上の y 座標。まつ毛の付け根を輪郭に合わせるために使う。 */
 function cubicY(t: number, p0: number, p1: number, p2: number, p3: number): number {
   const u = 1 - t;
@@ -817,6 +933,34 @@ function solidUpperY(rx: number, ry: number, shapeId: string, droop: number, x: 
   const w = rx * 1.4;
   const t = clamp((x + w) / (2 * w), 0, 1);
   return quadraticY(t, base, base - ry * 0.5, base);
+}
+
+/**
+ * 閉じ目（みかづき／したりめ）の弧の **すぐ内側** に敷く、虹彩色の細い線。
+ *
+ * 【2026-08-22 弧と平行にした — 「まつげと目がマッチしていない」の一因】
+ *   以前は `M-0.7w 0.42h Q0 -0.52h 0.7w 0.42h` という **ふくらみの違う別の弧**
+ *   だった。頂点の実測差は 0.375h ＝ 弧の高さの 1/3 以上あり、インクの弧の
+ *   はるか下に離れて描かれる。人はそれを「閉じたまぶたの内側の色」ではなく
+ *   **2 本目のまぶた** と読む。ここへまつげが乗ると線が 3 本並び、
+ *   何の絵なのか読めなくなっていた。
+ *
+ *   正しいのは、インクの弧と同じ曲線を **真下へ線の太さぶんずらしただけ**
+ *   の線。2 次ベジエは区間を切り出しても 2 次ベジエのままなので、両端を
+ *   少し詰めた同じ形を de Casteljau で求めて使う（下の係数 0.78 / 0.016 /
+ *   0.866 は、`M-w 0.3h Q0 -1.15h w 0.3h` を t = 0.11〜0.89 で切ったときの
+ *   制御点そのもの）。
+ *
+ *   ずらす量は「インクの弧の半分の太さ（strokeW×0.575）＋この線の半分の
+ *   太さ（strokeW×0.248）」よりわずかに大きい値。離しすぎると元の
+ *   「2 本目のまぶた」に戻る。
+ */
+function closedInnerArc(ctx: DrawCtx, iris: string, w: number, h: number): string {
+  const d = ctx.strokeW * 1.05;
+  return path(
+    `M${n(-w * 0.78)} ${n(h * 0.016 + d)}Q0 ${n(-h * 0.866 + d)} ${n(w * 0.78)} ${n(h * 0.016 + d)}`,
+    { stroke: iris, width: ctx.strokeThin * 0.8, opacity: 0.5 },
+  );
 }
 
 /** みかづき／したりめの弧上の y 座標。 */
@@ -1230,15 +1374,42 @@ function drawLashes(
   //   乗ってしまう（最初にそう実装して、実際にそう見えた）。
   const inkW = sprite.box.x1 - sprite.box.x0;
   if (inkW <= 0 || place.outerAt <= 0) return NO_LASH;
-  const spanL = -rx + place.shiftX * rx;
-  const spanC = (spanL + rx) / 2;
-  let scale = ((rx - spanL) / (place.outerAt * inkW)) * (place.sizeK ?? 1);
+  // ── 目尻はどこか ──────────────────────────────────────────
+  //   原画の「本体の終わり」（`outerAt`）を合わせる先。
+  //   閉じ目（みかづき／したりめ）だけは目のインクが `rx` ではなく
+  //   **弧の端 `rx * 1.08`**（`drawEye` の `const w = rx * 1.08`）まで
+  //   あるので、そこを目尻として扱う。
+  const outerX = closedEye ? rx * 1.08 : rx;
+  const spanL = -outerX + place.shiftX * rx;
+  const spanC = (spanL + outerX) / 2;
+  let scale = ((outerX - spanL) / (place.outerAt * inkW)) * (place.sizeK ?? 1);
 
+  // ── 縮めるときに固定する側 ────────────────────────────────
+  //
+  // 【閉じ目だけ「目尻」を固定する理由 — 2026-08-22「したりめとまつ毛が
+  //   全然マッチしていない」の主因】
+  //   閉じ目の器は横に長い（rx:ry ＝ 1.12:0.52）のに、原画の縦横比は
+  //   高さ 0.41 / 幅 1。下の高さの上限に必ず当たるので、まつげは弧の
+  //   6〜7 割の幅までしか伸ばせない。それを **中央** で縮めると、
+  //   原画の太くて枝分かれのある側（＝目尻側）が目の真ん中へ来て、
+  //   その外側に弧の細い線だけが残る。太い塊の外へ細い線が生えた形は、
+  //   まつげにも目にも見えない（実測 `B4KQ-YHUV`: 弧 44.3px に対して
+  //   まつげ 30.2px。目尻側に 5px、目頭側に 9px の弧がはみ出していた）。
+  //   目尻を固定すると、
+  //     ・枝分かれ（プロング）は目尻の **外** へ出る ＝ まつげが生える場所
+  //     ・原画の細く尖った側（目頭側）が、弧の細い線へそのまま続く
+  //   の 2 つが同時に成立し、弧とまつげが 1 本の線として読める。
+  const pinOuter = closedEye;
+  /** その倍率で置いたときの、原画の左端の x。 */
+  const startXOf = (s: number): number =>
+    pinOuter ? outerX - place.outerAt * inkW * s : spanC - (place.outerAt * inkW * s) / 2;
   // 目尻からのはみ出しは、体の輪郭までの余白に収める。越える場合は
   // まつげ全体を縮める（原画の形は保ったまま小さくなる）。
-  const rightOf = (s: number): number => spanC + inkW * s * (1 - place.outerAt / 2);
-  if (rightOf(scale) - rx > lashRoom) {
-    const fit = (rx + lashRoom - spanC) / (inkW * (1 - place.outerAt / 2));
+  const rightOf = (s: number): number => startXOf(s) + inkW * s;
+  if (rightOf(scale) - outerX > lashRoom) {
+    const fit = pinOuter
+      ? lashRoom / (inkW * (1 - place.outerAt))
+      : (outerX + lashRoom - spanC) / (inkW * (1 - place.outerAt / 2));
     if (!(fit > 0)) return NO_LASH;
     scale = Math.min(scale, fit);
   }
@@ -1250,7 +1421,11 @@ function drawLashes(
   //   両端の枝分かれだけが外へ飛び出して「脚の生えた別の生きもの」に見える。
   //   弧に添える細いまつげとして読める高さまで抑える。
   const inkH = sprite.box.y1 - sprite.box.y0;
-  const maxH = closedEye ? Math.min(place.maxH ?? Infinity, 1.3) : place.maxH;
+  //   閉じ目では `place.maxH`（下まつげ用の、白目の中へ入らせない上限）を
+  //   使わない。白目がそもそも無く、基準線は上まつげ・下まつげとも同じ
+  //   弧なので、あの上限をそのまま当てると下まつげだけが弧の 2 割の幅に
+  //   縮んで「弧の端に付いた小さなゴミ」になる。閉じ目は一律の上限にする。
+  const maxH = closedEye ? 1.15 : place.maxH;
   if (maxH !== undefined && Number.isFinite(maxH) && inkH > 0) {
     scale = Math.min(scale, (maxH * ry) / inkH);
   }
@@ -1258,8 +1433,10 @@ function drawLashes(
 
   // ── 位置 ──────────────────────────────────────────────────
   // 置き始めと倍率は `buildAt` の中で決める（輪郭に収まるまで縮めるため、
-  // 倍率が確定するのは最後）。しならせる基準の x だけはここで固定する。
-  const anchorX = spanC;
+  // 倍率が確定するのは最後）。しならせる基準の x ＝ **本体の中ほど**。
+  // 中央固定（従来）のときは `spanC` と完全に同じ値になるので、
+  // 開いた目の絵は 1px も変わらない。
+  const anchorXOf = (s: number): number => startXOf(s) + (place.outerAt * inkW * s) / 2;
 
   // ── まぶたの線に合わせてしならせる ──────────────────────────
   //
@@ -1305,7 +1482,8 @@ function drawLashes(
 
   /** ある倍率でまつげ 1 枚を組み立てる（`lashRoom` を越えていないか試すため）。 */
   const buildAt = (s: number): { d: string; probes: Vec[] } => {
-    const startX = spanC - (place.outerAt * inkW * s) / 2;
+    const startX = startXOf(s);
+    const anchorX = anchorXOf(s);
     const tx = startX - sprite.box.x0 * s;
     const edge = slopeLimited(baseAt, startX, rightOf(s), anchorX, LASH_MAX_SLOPE);
     const uOf = (x: number): number => (x - tx) / s / inkW - sprite.box.x0 / inkW;
@@ -1546,16 +1724,16 @@ function drawEye(
       linecap: 'round',
     });
     // 弧の内側にうっすら虹彩色を敷いて「閉じた目」であることを伝える
-    g += path(`M${n(-w * 0.7)} ${n(h * 0.42)}Q0 ${n(-h * 0.52)} ${n(w * 0.7)} ${n(h * 0.42)}`, {
-      stroke: iris,
-      width: ctx.strokeThin * 0.8,
-      opacity: 0.5,
-    });
+    g += closedInnerArc(ctx, iris, w, h);
     if (ctx.parts.pupil === 'sparkle' || ctx.parts.pupil === 'petalP') {
       g += path(starPath(dir * w * 0.95, -h * 0.75, s * 0.24, s * 0.09, 4, -90), {
         fill: c.accent,
         opacity: 0.9,
       });
+    }
+    // 稀な形質『きらり』。閉じ目は面を持たないので、弧の外側の空へ小さく置く。
+    if (ctx.parts.eyeGlint === 'star') {
+      g += glintMarkup(ctx, dir * w * 0.86, -h * 0.92, s * 0.15);
     }
     lashInner = lashes(shapeId, st, lashRoom);
     g += `</g>`;
@@ -1604,17 +1782,25 @@ function drawEye(
     });
     g += `</g>`;
     // 弧の内側にうっすら虹彩色を敷いて「閉じた目」であることを伝える（みかづきと同じ）
-    g += path(`M${n(-w * 0.7)} ${n(h * 0.42)}Q0 ${n(-h * 0.52)} ${n(w * 0.7)} ${n(h * 0.42)}`, {
-      stroke: iris,
-      width: ctx.strokeThin * 0.8,
-      opacity: 0.5,
-    });
+    g += closedInnerArc(ctx, iris, w, h);
     if (ctx.parts.pupil === 'sparkle' || ctx.parts.pupil === 'petalP') {
       g += path(starPath(dir * w * 0.95, -h * 0.75, s * 0.24, s * 0.09, 4, -90), {
         fill: c.accent,
         opacity: 0.9,
       });
     }
+    // 稀な形質『きらり』。閉じ目は面を持たないので、弧の外側の空へ小さく置く。
+    if (ctx.parts.eyeGlint === 'star') {
+      g += glintMarkup(ctx, dir * w * 0.86, -h * 0.92, s * 0.15);
+    }
+    // 【切り欠きの mask をまつげには掛けない】
+    //   いちど掛けてみたが、まつげは弧より厚いので、切り欠きの円が
+    //   **まつげの中に開いた白い丸** になった（まつげの上に乗る白い点は
+    //   「目の上を魚が泳いでいる」と読まれて一度外した経緯がある。
+    //   `drawLashes` の白いつやの説明を参照）。
+    //   切り欠きは弧の右寄りに固定で、まつげは目尻側に寄せてあるので、
+    //   重なるのは左右どちらか一方の目だけ。もう一方では切り欠きが
+    //   そのまま見える ＝ したりめ の非対称さはむしろ強まる。
     lashInner = lashes(shapeId, st, lashRoom);
     g += `</g>`;
     return { svg: g, lashSvg: lashInner ? `${tf}${lashInner}</g>` : '', probes };
@@ -1778,6 +1964,11 @@ function drawEye(
       fill: '#fffdf8',
       opacity: 0.85,
     });
+  }
+  // 稀な形質『きらり』。既定のハイライト（左上）の反対、右下寄りへ置く。
+  // clipPath の中なので、面からはみ出したぶんは必ず切られる。
+  if (ctx.parts.eyeGlint === 'star') {
+    g += glintMarkup(ctx, ir * 0.4, py + irY * 0.3, Math.min(ir, irY) * 0.26);
   }
   g += `</g>`;
 
