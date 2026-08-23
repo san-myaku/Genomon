@@ -34,7 +34,10 @@ const openCards = async (page: Page): Promise<string[]> => {
  * 中身を見るテストは、まず開く。
  */
 const openFolds = async (page: Page): Promise<void> => {
-  for (const id of ['cards-fold-finish', 'cards-fold-design', 'cards-fold-gallery', 'cards-fold-settings']) {
+  for (const id of [
+    'cards-fold-rarity', 'cards-fold-finish', 'cards-fold-design',
+    'cards-fold-gallery', 'cards-fold-settings',
+  ]) {
     const details = page.locator(`#${id}`);
     if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) {
       await details.locator('> summary').click();
@@ -55,8 +58,10 @@ test.describe('Cards Lab', () => {
     }
 
     await openFolds(page);
+    await expect(page.locator('#cards-cmp-rarity .holo-card')).toHaveCount(5);
     await expect(page.locator('#cards-cmp-finish .holo-card')).toHaveCount(6);
-    await expect(page.locator('#cards-cmp-design .holo-card')).toHaveCount(3);
+    // Collector v2 / Certified / Natural History / 旧 Collector の 4 案
+    await expect(page.locator('#cards-cmp-design .holo-card')).toHaveCount(4);
     expect(await page.locator('#cards-gallery .holo-card').count()).toBeGreaterThanOrEqual(8);
 
     // カード比（63:88）が保たれている
@@ -89,13 +94,14 @@ test.describe('Cards Lab', () => {
     await openCards(page);
     await openFolds(page);
     const card = page.locator('#cards-showcase .holo-card');
-    await expect(card).toHaveAttribute('data-design', 'certified');
+    // 既定は Collector v2（§4）。
+    await expect(card).toHaveAttribute('data-design', 'collectorV2');
 
-    await page.locator('[data-set="design=collector"]').click();
-    await expect(page.locator('#cards-showcase .holo-card')).toHaveAttribute('data-design', 'collector');
+    await page.locator('[data-set="design=certified"]').click();
+    await expect(page.locator('#cards-showcase .holo-card')).toHaveAttribute('data-design', 'certified');
     await expect(page.locator('#cards-cmp-finish .holo-card').first()).toHaveAttribute(
       'data-design',
-      'collector',
+      'certified',
     );
   });
 

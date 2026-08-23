@@ -92,13 +92,42 @@ test.describe('Cards Lab — フレーバーの版面', () => {
     expect(m.h).toBeLessThanOrEqual(m.lineH * 2 + 2);
   });
 
-  test('3 つの版面すべてに出る（比較で見比べられる）', async ({ page }) => {
+  test('すべての版面に出る（比較で見比べられる）', async ({ page }) => {
     await openCards(page);
     const fold = page.locator('#cards-fold-design');
     if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) {
       await fold.locator('> summary').click();
     }
     await page.waitForSelector('#cards-cmp-design .gmc-card', { timeout: 30_000 });
-    await expect(page.locator('#cards-cmp-design .gmc-flavor')).toHaveCount(3);
+    await expect(page.locator('#cards-cmp-design .gmc-flavor')).toHaveCount(4);
+  });
+
+  /**
+   * 【フレーバーは左下・最後に読むもの（§9）】
+   *   目に最初に入るのは絵 → 段 → 認証印。フレーバーは
+   *   「よく見たら書いてある」くらいの位置と大きさに留める。
+   */
+  test('Collector v2 ではカードの左下に、名前より小さく置かれている', async ({ page }) => {
+    await openCards(page);
+    const m = await page.evaluate(() => {
+      const card = document.querySelector('#cards-showcase .gmc-card')!;
+      const cb = card.getBoundingClientRect();
+      const fb = card.querySelector('.gmc-flavor')!.getBoundingClientRect();
+      const name = card.querySelector('.gmc-v-name')!;
+      const flavorSpan = card.querySelector('.gmc-flavor span')!;
+      return {
+        left: (fb.left - cb.left) / cb.width,
+        bottom: (fb.bottom - cb.top) / cb.height,
+        right: (fb.right - cb.left) / cb.width,
+        nameFont: parseFloat(getComputedStyle(name).fontSize),
+        flavorFont: parseFloat(getComputedStyle(flavorSpan).fontSize),
+      };
+    });
+    // 左下の領域に収まっていること
+    expect(m.left).toBeLessThan(0.12);
+    expect(m.bottom).toBeGreaterThan(0.86);
+    expect(m.right).toBeLessThanOrEqual(1);
+    // 名前より明らかに小さいこと（主役を食わない）
+    expect(m.flavorFont).toBeLessThan(m.nameFont * 0.6);
   });
 });
