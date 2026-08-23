@@ -323,6 +323,59 @@ SVG を目で見て確認する。** テストが green でも「合成された
    CSS エスケープ（`be` など）も二重に潰れて制御文字になり得るので、
    記号は直接書く。`tests/cards.test.ts` が制御文字と波かっこの対応を見ている。
 
+### Cards Lab 第 2 世代のルール（D-042）
+
+版面は 4 案（Collector v2 / Certified / Natural History / 旧 Collector）。
+**既定は Collector v2**、旧 Collector は比較用に残してあるだけ（`legacy: true`）。
+表＝見るカード、裏＝読むカード。責務は次のとおりで、混ぜない。
+
+    cardModel.ts    実データ（Phenotype / Genotype 由来の事実）
+    cardHistory.ts  Lab 専用の仮の経歴（labOnly: true）
+    cardRarity.ts   段 → 見た目の対応表（1 か所に閉じる）
+    cardSeal.ts     認証印の SVG
+    cardDesign.ts   表面の組み立て・ライブラリ設定・裏返しの器
+    cardBack.ts     裏面の組み立て
+    cardStyles.ts   共有 CSS
+    cardLab.ts      Lab の画面
+
+10. **希少度 → 見た目の対応は `cardRarity.ts` にしか書かない。**
+    ランク名（MYTHIC など）を他のファイルへ直書きしないこと。名前は仮なので、
+    `CARD_RANKS` の `label` を書き換えるだけで全部が追随する形を保つ。
+    段の差は **素材そのもの**（箔の量・箔を掛ける場所・地紋・認証印・縁・帯）
+    で作る。文字色だけを変える実装に戻さない。`tests/cards.test.ts` が
+    「段ごとに seal / edge / band が全部違う」ことを機械的に見ている。
+11. **段ごとの foil マスクは、段ごとに別の抜きを持つ。**
+    金（gold）は color-dodge で面ごと持ち上がるので浅い抜きだとカードごと
+    金一色になり、分光（prism）は深い抜きだと縁の細い帯しか残らない。
+    **同じ抜きは使えない**（`collectorV2Mask`）。ここを 1 本にまとめない。
+12. **本物と作りものを型で分ける。** 親・展示成績・発行番号は `LabCardHistory`
+    （`labOnly: true`）。**裏面の遺伝欄だけは絶対にダミーにしない** ──
+    本編と同じ `deriveGeneticReportOf` を通す。座の数は `CAT_LOCI` /
+    `NUM_LOCI` から取り、固定値を書かない。
+13. **裏返しにライブラリの `.holo-card__back` を使わない。** あれは読み込み中の
+    裏地用で `backface-visibility: visible` が当たっている。`.holo-card` の
+    外側に `.gmc-flip` を作り、表と裏に独立した `.holo-card` を入れる。
+    裏面は **初めて裏返した瞬間まで作らない**（比較・一覧では器ごと作らない）。
+14. **位置は実測で決める。** 絵は `flex:1 1 auto` で伸びるので、カード全体に
+    対する % で要素を置くと個体ごとに動く（認証印が段の帯に重なって点数を
+    隠した）。情報欄に柱を予約するなど、**基準になる箱の中**へ置くこと。
+    foil マスクの座標を変えたら、必ず実際のカードを測り直す。
+15. **裏面だけ px の下限を持つ。** スマホではカードの実寸が 258〜331px しか
+    ないので、`cqw` に比例させると本文が 6px 台に落ちる
+    （`font-size: max(16px, 3.75cqw)`）。あふれるぶんは書類の中だけを
+    スクロールさせる。表（絵が主役）は相対寸法のままでよい。
+16. **`prefers-reduced-motion` の検査は `page.emulateMedia()` で明示する。**
+    `test.use({ reducedMotion })` は describe に置いてもプロジェクト側の
+    `devices[...]` と合成されて効かず、**3D 回転したまま合格していた**。
+    同じテストの中で `matchMedia` が reduce を返すことも確かめること。
+17. **デッキバーにボタンを足したら、2 段に折る閾値を計算し直す。**
+    いまは 6 つで `max-width:480px` から 2 段。1 段に並ぶ幅の計算は
+    `cardStyles.ts` のコメントにある。
+18. **フレーバーの分布は測ってから判断する。** `npx vite-node tools/cardStats.ts`
+    が、ユニーク文数・最頻率・上位 10 文の占有・半数を占める文の数と、
+    段の出現率を出す。文を足したら必ず測り直す（数字だけ良くするために
+    品質の低い組み合わせ文を増やさないこと）。
+
 ## ドキュメント地図
 
 - [README.md](README.md) — 起動手順・実装済み機能・未実装項目・遺伝子仕様
