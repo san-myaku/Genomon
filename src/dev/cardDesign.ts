@@ -293,8 +293,11 @@ export function holoOptionsFor(spec: CardSpec, face: 'front' | 'back' = 'front')
   //   「その子のカード」に見えなかった（Collector は文字が最小限なので、
   //   個体らしさを背負えるのが絵と地色しかない）。
   //   ほぼ黒のまま、体色の方向へわずかに寄せる。
-  const paper = isCollector(design) ? mix(skin.paper, pheno.palette.bodyDark, v2 ? 0.28 : 0.34) : skin.paper;
-  const paper2 = isCollector(design) ? mix(skin.paper2, pheno.palette.body, v2 ? 0.13 : 0.16) : skin.paper2;
+  //   v2 では寄せかたを旧 Collector より弱くしてある。製品オーナーの好みは
+  //   「黒〜非常に暗い背景」で、明るい体色の個体（黄緑・淡橙）だと 0.34 では
+  //   地色が中間色まで持ち上がり、黒いカードに見えなくなる。
+  const paper = isCollector(design) ? mix(skin.paper, pheno.palette.bodyDark, v2 ? 0.2 : 0.34) : skin.paper;
+  const paper2 = isCollector(design) ? mix(skin.paper2, pheno.palette.body, v2 ? 0.1 : 0.16) : skin.paper2;
 
   const opts: HoloCardOptions = {
     effect: toEffect(finish),
@@ -326,13 +329,20 @@ export function holoOptionsFor(spec: CardSpec, face: 'front' | 'back' = 'front')
       brightness: isCollector(design) ? 1 : 0.92,
       contrast: isCollector(design) ? 1 : 0.95,
     },
+    // 【最後の stop は必ず透明で終わらせる — 矩形の段差が出た】
+    //   以前は `hsla(0,0%,0%,.55) 92%` で終わっていた。92% より外側は
+    //   その色のまま element の縁まで続くので、**glare の箱の縁が
+    //   そのままカードの上に矩形の継ぎ目として見えていた**
+    //   （depth の視差で glare がカードより内側へずれると、絵の真ん中に出る）。
+    //   暗い縁取り（vignette）は残したいので、暗い stop の外側へ
+    //   透明な stop を 1 つ足して、縁に届く前に消えるようにする。
     glare: {
       shape: 'ellipse',
       size: isCollector(design) ? '80% 60%' : '65% 45%',
       stops:
         isCollector(design)
-          ? ['hsla(0,0%,100%,.72) 8%', 'hsla(0,0%,100%,.34) 26%', 'hsla(0,0%,0%,.55) 92%']
-          : ['hsla(42,60%,100%,.5) 10%', 'hsla(0,0%,100%,.22) 30%', 'hsla(0,0%,0%,.34) 92%'],
+          ? ['hsla(0,0%,100%,.72) 8%', 'hsla(0,0%,100%,.34) 26%', 'hsla(0,0%,0%,.5) 78%', 'hsla(0,0%,0%,0) 100%']
+          : ['hsla(42,60%,100%,.5) 10%', 'hsla(0,0%,100%,.22) 30%', 'hsla(0,0%,0%,.3) 80%', 'hsla(0,0%,0%,0) 100%'],
       blend: 'soft-light',
     },
     physics: {

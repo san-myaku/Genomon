@@ -599,7 +599,7 @@ export const CARD_CSS = `
 .gmc-card--collectorV2 .gmc-k-halo{position:absolute;inset:0;
   background:radial-gradient(44% 27% at 50% 33%,
     color-mix(in srgb, var(--gmc-glow) 38%, transparent), transparent 72%);
-  mix-blend-mode:screen;opacity:calc(.5 * var(--gmc-backdrop-amount,1))}
+  mix-blend-mode:screen;opacity:calc(.42 * var(--gmc-backdrop-amount,1))}
 /* 情報欄の下半分だけ地を沈める。v2 は情報が多いぶん、旧 Collector より
    幕の立ち上がりを上（44%）にしてある。 */
 .gmc-card--collectorV2 .gmc-k-scrim{position:absolute;inset:0;
