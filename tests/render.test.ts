@@ -41,6 +41,26 @@ function forcedPartGenotype(seed: string, locus: CatLocus, id: string): Genotype
   };
 }
 
+/**
+ * 一体化した耳の svg に「線を含んだまま拡大縮小されている所」が無いか。
+ *
+ * 【なぜ `scale(` の有無そのものを見ないのか — 2026-08-22 に緩めた】
+ *   もともとは「`scale(` が 1 つでもあれば不合格」という書きかただった。
+ *   守りたい規則は **耳の輪郭線の太さを変形で変えない**（変えると体の輪郭と
+ *   太さが合わず、耳が貼り付けた別パーツに見える）ことで、`scale(` の
+ *   有無はその代理でしかない。
+ *   耳の「中身」（内耳の面・耳先の色）は、外周と同じ曲がりかたにするため
+ *   **外周を相似縮小した塗り** で描くようになった（`ears.ts` の `shrunkEar`）。
+ *   塗りだけなので線幅は 1px も変わらないのに、代理の検査には引っかかる。
+ *   規則そのもの ＝「縮小したグループの中に `stroke=` を入れない」を見る。
+ */
+function scaledStroke(svg: string): boolean {
+  for (const m of svg.matchAll(/<g transform="[^"]*scale\([^)]*\)">(.*?)<\/g>/g)) {
+    if (m[1]!.includes('stroke=')) return true;
+  }
+  return svg.includes('transform="matrix(');
+}
+
 function renderForcedPart(seed: string, locus: CatLocus, id: string): string {
   const genotype = forcedPartGenotype(seed, locus, id);
   const pheno = phenotypeOf(genotype, 'adult');
@@ -60,7 +80,7 @@ it('耳付き 1000 体で描画不良・非決定的 SVG を出さない', () =>
     const earIssues = inspection.issues.filter((issue) => issue.includes('ears'));
     if (earIssues.length) issues.push(`${kind}:${earIssues.join(',')}`);
     const earPart = model.parts.find((part) => part.id === 'ears');
-    if (integrated.has(kind) && earPart && /transform="[^"]*(?:matrix|scale)\(/.test(earPart.svg)) {
+    if (integrated.has(kind) && earPart && scaledStroke(earPart.svg)) {
       issues.push(`${kind}:${i}:scaled-outline`);
     }
     const first = renderCreatureSvg(model, { animatable: false });
@@ -80,7 +100,7 @@ it('一体化した耳は変形行列で線幅を変えず、体の輪郭より�
     expect(ears, kind).toBeDefined();
     expect(outline, kind).toBeDefined();
     expect(ears!.svg, kind).not.toContain('transform="matrix(');
-    expect(ears!.svg, kind).not.toMatch(/transform="[^"]*scale\(/);
+    expect(scaledStroke(ears!.svg), `${kind}: 縮小したグループの中に線が入っている`).toBe(false);
     expect(ears!.z, kind).toBeGreaterThan(outline!.z);
   }
 });

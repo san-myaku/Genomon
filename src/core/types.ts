@@ -42,6 +42,8 @@ export type CatLocus =
   | 'eyeCount'    // 目の数
   | 'eyeShape'    // 目の形
   | 'pupil'       // 瞳
+  | 'eyeGlint'    // 目のきらめき（稀に入る小さな星のつや）
+  | 'irisTone'    // 目のグラデ（稀に虹彩が二色になる）
   | 'lashes'      // まつげ
   | 'mouth'       // 口
   | 'ears'        // 耳
@@ -195,6 +197,10 @@ export interface PartExpression {
   eyeCount: number;
   eyeShape: string;
   pupil: string;
+  /** ごく稀に目の面へ入る、小さな星のきらめき。瞳の意匠とは独立。 */
+  eyeGlint: string;
+  /** ごく稀に虹彩が二色のグラデーションになる。きらめきとは独立。 */
+  irisTone: string;
   /** まつげの有無。目の形（eyeShape）とは独立した遺伝子座。 */
   lashes: string;
   mouth: string;
