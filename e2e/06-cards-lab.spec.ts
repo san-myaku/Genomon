@@ -190,6 +190,12 @@ test.describe('Cards Lab', () => {
   });
 });
 
+/**
+ * 【セレクタをデッキバーへ限定している理由】
+ *   同じ `data-act` の操作は PC 側（カード直下の `.cards-deal`）にもある。
+ *   ここはスマホの固定デッキバーそのものを見るテストなので、
+ *   `.cards-deck` の中へ限定する（限定しないと 2 件に当たって落ちる）。
+ */
 test.describe('Cards Lab — スマホでの持ちかた', () => {
   test('カードが最初に見え、デッキバーに隠れない', async ({ page }) => {
     test.skip(!isMobile(page), 'スマホ幅専用の検証');
@@ -227,7 +233,7 @@ test.describe('Cards Lab — スマホでの持ちかた', () => {
     const first = await seedOf();
     const seen = new Set<string>([first ?? '']);
     for (let i = 0; i < 4; i++) {
-      await page.locator('[data-act="next"]').click();
+      await page.locator('.cards-deck [data-act="next"]').click();
       await expect(page.locator('#cards-showcase .holo-card')).not.toHaveAttribute(
         'data-seed',
         [...seen][seen.size - 1] ?? '',
@@ -238,7 +244,7 @@ test.describe('Cards Lab — スマホでの持ちかた', () => {
     expect(seen.size).toBe(5);
 
     const last = await seedOf();
-    await page.locator('[data-act="prev"]').click();
+    await page.locator('.cards-deck [data-act="prev"]').click();
     await expect(page.locator('#cards-showcase .holo-card')).not.toHaveAttribute('data-seed', last ?? '');
     // 履歴の位置が説明文に出る
     await expect(page.locator('.cards-count')).toContainText('/5');

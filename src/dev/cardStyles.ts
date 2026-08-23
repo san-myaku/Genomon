@@ -545,15 +545,33 @@ export const CARD_CSS = `
   .cards-showcase{width:min(40vw,var(--cards-showcase-w,430px),340px)}
 }
 
-/* 表 / 裏の操作列。カード本体でもめくれるが、押せることが分かる場所を必ず 1 つ出す。 */
-.cards-facebar{justify-content:center;align-items:center;gap:8px;margin-top:2px}
-.cards-facebar .hint{margin:0;font-size:10.5px}
-.cards-facebar button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);
+/* ══ カードの真下の操作列（PC の主動線）══
+   スマホのデッキバーと同じ並びを、固定バーではなくカードの直下に置く。
+   「つぎのカード」が設定パネルの中にしか無かったので、PC では
+   めくるたびにカードから目を離して左端まで狙う必要があった。 */
+.cards-deal{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
+  gap:7px;margin-top:4px}
+.cards-deal button{min-height:34px}
+.cards-deal-main{min-width:150px;font-weight:700}
+.cards-deal-save{color:var(--warn);font-size:15px;line-height:1}
+.cards-deal button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);
   border-color:var(--accent)}
+.cards-deal button[disabled]{opacity:.4}
+.cards-deal .cards-deal-keys{flex:1 1 100%;margin:0;text-align:center;font-size:10.5px}
+.cards-deal kbd{display:inline-block;min-width:1.5em;padding:0 4px;border-radius:4px;
+  border:1px solid var(--line);background:var(--panel);font-family:monospace;
+  font-size:10px;line-height:16px;text-align:center;color:var(--fg)}
+
+/* 説明文の役割分担。広い画面ではキーの案内（.cards-deal-keys）が同じことを
+   言っているので、説明文側の「タップ／左右スワイプ」は出さない
+   （PC には無い操作なので、そのまま出すと嘘になる）。 */
+@media (min-width:900px){
+  .cards-cap-tip{display:none}
+}
+
 @media (max-width:899px){
-  /* スマホではデッキバーの「面」が主役。ここは説明だけ残して場所を節約する。 */
-  .cards-facebar button{display:none}
-  .cards-facebar .hint{font-size:10px}
+  /* 狭い画面ではデッキバーと左右スワイプが同じ役割を担う。二重に置かない。 */
+  .cards-deal{display:none}
 }
 
 .cards-count{display:inline-block;margin-left:.4em;padding:1px 7px;border-radius:99px;

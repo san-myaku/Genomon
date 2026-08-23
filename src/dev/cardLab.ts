@@ -179,6 +179,17 @@ const CYCLE_FINISHES: readonly CardFinishChoice[] = [
 /** 履歴に残すカードの枚数。めくり戻せれば十分なので上限は控えめ。 */
 const HISTORY_MAX = 80;
 
+/**
+ * 比較・一覧を作り直すまでの待ち時間。
+ *
+ * 【220ms では PC で「次々に」めくれなかった — 実測】
+ *   PC は折りたたみが全部開いているので、1 枚めくるたびに 23 枚を作り直す。
+ *   220ms は人が連続で押す間隔（300ms 前後）より短いため **1 タップごとに
+ *   full の再構築が走り**、5 連打が 1500ms のはずのところ 2687ms かかっていた。
+ *   手が止まってから追いつけば十分なので、連打を 1 回にまとめられる長さにする。
+ */
+const SETTLE_MS = 500;
+
 const isNarrow = (): boolean => window.innerWidth < NARROW_PX;
 
 // ─────────────────────────────────────────────────────────
@@ -623,7 +634,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       renderFinishCmp();
       renderDesignCmp();
       renderGallery();
-    }, 220);
+    }, SETTLE_MS);
   }
 
   /** 仕上げの表示名。'auto' のときは、いま実際に選ばれている効果も添える。 */
@@ -661,8 +672,11 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     for (const b of $$<HTMLElement>('[data-act="flip"]', host)) {
       b.setAttribute('aria-pressed', face === 'back' ? 'true' : 'false');
     }
-    const back = $<HTMLButtonElement>('[data-act="prev"]', host);
-    if (back) back.disabled = trailAt <= 0;
+    // 「戻る」はカードの下とデッキバーの 2 か所に出る。$ は先頭しか返さないので
+    // $$ で全部そろえる（片方だけ押せる状態が残ると、押しても何も起きない）。
+    for (const back of $$<HTMLButtonElement>('[data-act="prev"]', host)) {
+      back.disabled = trailAt <= 0;
+    }
   }
 
   /** 表 ↔ 裏。裏面はここで初めて作られる（mountCard の遅延生成）。 */
@@ -922,6 +936,44 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     }
   };
 
+  /**
+   * キーボードでめくる（PC の主動線）。
+   *
+   * 【なぜ要るか】
+   *   スマホには画面下のデッキバーと左右スワイプがあるが、PC では
+   *   「つぎのカード」が設定パネルの中にしか無く、カードから目を離して
+   *   左端まで狙う必要があった。**次々に見る**のがこの Lab の使いかたなので、
+   *   手を動かさずに送れる経路を用意する。
+   *
+   * 【文字入力を奪わない】
+   *   seed を打っている最中に矢印キーを取ると、カーソル移動ができなくなる。
+   *   入力欄・選択肢・別タブ表示中は必ず素通しする。
+   */
+  const onKeyDown = (ev: KeyboardEvent): void => {
+    if (ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (host.hidden) return;
+    const el = document.activeElement as HTMLElement | null;
+    if (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement ||
+      el?.isContentEditable
+    ) {
+      return;
+    }
+
+    if (ev.key === 'ArrowRight') {
+      ev.preventDefault();
+      nextCard();
+    } else if (ev.key === 'ArrowLeft') {
+      ev.preventDefault();
+      prevCard();
+    } else if (ev.key === 'f' || ev.key === 'F') {
+      ev.preventDefault();
+      flipShowcase();
+    }
+  };
+
   function scrollToStage(): void {
     $('#cards-stage', host)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
@@ -987,6 +1039,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerUp);
   window.addEventListener('resize', onResize);
+  window.addEventListener('keydown', onKeyDown);
 
   pushTrail(normalizeSeed(st.seed));
   renderAll(true);
@@ -1004,6 +1057,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('keydown', onKeyDown);
       clearLive();
     },
   };
@@ -1186,11 +1240,20 @@ function shell(st: CardPrefs, reducedMotion: boolean, narrow: boolean): string {
     `<div class="cards-showcase" id="cards-showcase" style="--cards-showcase-w:${st.showcaseW}px"></div>` +
     `</div>` +
     `<p class="cards-caption" id="cards-caption"></p>` +
-    // 表 ↔ 裏。カードを直接押しても裏返るが、押せることが分からないと
-    // 誰も裏面を見ない。押せる場所を必ず 1 つ画面に出しておく。
-    `<div class="row cards-facebar">` +
-    `<button type="button" data-act="flip" aria-pressed="false">表 ／ 裏をめくる</button>` +
-    `<span class="hint">カード本体をタップ（Enter / Space）でもめくれます。</span>` +
+    // 【カードの真下に「つぎ」を置く（PC の主動線）】
+    //   スマホのデッキバーと同じ並びを、固定バーではなくカードの直下へ置く。
+    //   設定パネルの中にしか「つぎのカード」が無かったので、
+    //   PC では毎回カードから目を離して左端まで狙う必要があった。
+    //   狭い画面ではデッキバーが同じ役割を担うので、この列は出さない。
+    `<div class="cards-deal">` +
+    `<button type="button" data-act="prev" aria-label="前のカードへ戻る">◀</button>` +
+    `<button type="button" class="primary cards-deal-main" data-act="next">つぎのカード</button>` +
+    `<button type="button" data-act="flip" aria-pressed="false">表 ／ 裏</button>` +
+    `<button type="button" class="cards-deal-save" data-act="save-quick" ` +
+    `aria-label="このカードを保存">♥</button>` +
+    `<span class="hint cards-deal-keys">` +
+    `<kbd>←</kbd> <kbd>→</kbd> でめくる・<kbd>F</kbd> で裏返す（カード本体をクリックでも裏返ります）` +
+    `</span>` +
     `</div>` +
     `</div>` +
 

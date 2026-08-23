@@ -243,6 +243,98 @@ test.describe('Cards Lab v2 — 裏返し', () => {
   });
 });
 
+test.describe('Cards Lab v2 — PC でも次々にめくれる', () => {
+  test.skip(({ viewport }) => (viewport?.width ?? 1280) < 900, 'PC 幅専用の検証');
+
+  /**
+   * 【PC の主動線はカードの真下】
+   *   以前は「つぎのカード」が設定パネルの中にしか無く、めくるたびに
+   *   カードから目を離して左端まで狙う必要があった。スマホのデッキバーと
+   *   同じ並びを、固定バーではなくカードの直下へ置いてある。
+   */
+  test('カードの真下に「つぎのカード」と表裏があり、押すとめくれる', async ({ page }) => {
+    await openCards(page);
+    const deal = page.locator('.cards-deal');
+    await expect(deal).toBeVisible();
+    // スマホのデッキバーは PC では出ない（二重に置かない）
+    await expect(page.locator('.cards-deck')).toBeHidden();
+
+    const seedOf = (): Promise<string | null> =>
+      page.locator('#cards-showcase .gmc-flip-face--front .holo-card').getAttribute('data-seed');
+
+    const first = await seedOf();
+    await deal.locator('[data-act="next"]').click();
+    await expect
+      .poll(seedOf, { message: 'つぎのカードで個体が変わる' })
+      .not.toBe(first);
+
+    const second = await seedOf();
+    await deal.locator('[data-act="prev"]').click();
+    await expect.poll(seedOf, { message: '戻るで前の個体へ' }).toBe(first);
+    expect(second).not.toBe(first);
+  });
+
+  test('矢印キーでめくれ、F で裏返る', async ({ page }) => {
+    await openCards(page);
+    const seedOf = (): Promise<string | null> =>
+      page.locator('#cards-showcase .gmc-flip-face--front .holo-card').getAttribute('data-seed');
+
+    const first = await seedOf();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(seedOf).not.toBe(first);
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(seedOf).toBe(first);
+
+    await page.keyboard.press('f');
+    await expect(page.locator('#cards-showcase .gmc-flip')).toHaveAttribute('data-face', 'back');
+    await page.keyboard.press('f');
+    await expect(page.locator('#cards-showcase .gmc-flip')).toHaveAttribute('data-face', 'front');
+  });
+
+  /**
+   * 【文字入力を奪わない】
+   *   seed を打っている最中に矢印キーを取ると、カーソルが動かせなくなる。
+   */
+  test('seed を入力しているあいだは矢印キーを奪わない', async ({ page }) => {
+    await openCards(page);
+    const fold = page.locator('#cards-fold-settings');
+    if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) {
+      await fold.locator('> summary').click();
+    }
+    const seedOf = (): Promise<string | null> =>
+      page.locator('#cards-showcase .gmc-flip-face--front .holo-card').getAttribute('data-seed');
+
+    const before = await seedOf();
+    await page.locator('#cards-seed').click();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(250);
+    expect(await seedOf()).toBe(before);
+  });
+
+  /**
+   * 【連打しても重い所を作り直さない】
+   *   PC は折りたたみが全部開いているので、1 枚めくるたびに 20 枚超を
+   *   作り直していた。5 連打が 1500ms のはずのところ 2687ms かかっていた
+   *   （実測）。手が止まってから追いつく形に変えてある。
+   */
+  test('連続でめくっても、比較の作り直しで詰まらない', async ({ page }) => {
+    await openCards(page);
+    await page.waitForTimeout(800);
+    const elapsed = await page.evaluate(async () => {
+      const btn = document.querySelector('.cards-deal [data-act="next"]') as HTMLElement;
+      const t0 = performance.now();
+      for (let i = 0; i < 5; i++) {
+        btn.click();
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      return performance.now() - t0;
+    });
+    // 理想は 1500ms。作り直しが毎回走ると 2600ms を超える。
+    expect(elapsed).toBeLessThan(2100);
+  });
+});
+
 test.describe('Cards Lab v2 — 動きを減らす設定', () => {
   /**
    * 【`test.use({ reducedMotion })` に頼らない】
