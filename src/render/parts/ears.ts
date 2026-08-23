@@ -48,6 +48,7 @@ import {
   polyPath,
   sampleOpen,
   shrinkToFit,
+  url,
   type Box,
   type Vec,
 } from '../svg.ts';
@@ -836,63 +837,95 @@ function integratedEar(
   const inward = ctx.strokeW * 0.9;
   const fillPath = `${open}L${n(lower.x - side * inward)} ${n(lower.y)}L${n(upper.x - side * inward)} ${n(upper.y)}Z`;
   let svg = path(fillPath, { fill: q.fill });
-  if (ctx.parts.earTip === 'tip') {
-    const tip = earTipPalette(ctx).fill;
-    if (q.silhouette === 'flop') {
-      svg += ellipse(center.x + side * reach * 0.74, center.y + lift * 0.6, reach * 0.19, lift * 0.14, {
-        fill: tip, opacity: 0.92,
-      });
-    } else if (q.silhouette === 'round' || q.silhouette === 'bear') {
-      // 丸い外周からはみ出さない、小さな面として内側へ置く。
-      svg += ellipse(center.x + side * reach * 0.45, center.y - lift * 0.24, reach * 0.16, lift * 0.12, {
-        fill: tip, opacity: 0.92,
-      });
-    } else {
-      // 先端と両側の外周を結ぶ面。左右どちらでも耳の中央に収まり、
-      // 細い線や外周からはみ出す別パーツにならない。
-      const tipUpper = mixVec(apex, upper, 0.34);
-      const tipLower = mixVec(apex, lower, 0.38);
-      svg += path(
-        `M${n(apex.x)} ${n(apex.y)}` +
-        `L${n(tipUpper.x)} ${n(tipUpper.y)}` +
-        `Q${n(center.x + side * reach * 0.78)} ${n(apex.y + lift * 0.48)}` +
-        ` ${n(tipLower.x)} ${n(tipLower.y)}Z`,
-        { fill: tip },
-      );
+
+  // ── 耳の「中身」の共通規則 ────────────────────────────────
+  //
+  // 【2026-08-22 製品オーナーの指摘「耳も今、外周と一致しているのはいいけど、
+  //   中身が変だよね」】
+  //   中身（内耳の面・耳先の色・葉脈）は、それぞれ `center` と `reach`／
+  //   `lift` から独立に置いた図形だった。外周は `upper`／`lower`／`apex` を
+  //   通る **曲線** なのに、中身は曲線を一切見ていないので、
+  //     まるみみ … 面が外周の左上へ丸ごとはみ出して背景の上に乗る
+  //     うさ耳   … 面が耳の底で外周を割って体の上へ出る
+  //     ねこ耳   … 硬い三角形が外へ突き出す（この作品は尖った三角を使わない）
+  //     たれみみ … 面が耳ではなく **頭の上** に乗る
+  //   のように、形ごとにばらばらに壊れていた。
+  //
+  //   直しかたは 2 段。**個別に座標を調整するのではなく、規則を 1 つにする。**
+  //     ① 中身はすべて耳の塗り（`fillPath`）でクリップする。
+  //        これで「外周からはみ出す」ことが構造的に起こらなくなる。
+  //     ② 内耳の面は、**耳の外周そのものを縮めた形** にする。
+  //        根元の中点から先端へ向かう軸の上の 1 点を中心に相似縮小するので、
+  //        どんな耳の形でも中身が外周と同じ曲がりかたをする
+  //        （＝「外周と一致している」のを中身にも広げる）。
+  const clipId = ctx.defs.add(`earIn${kind}${side > 0 ? 'R' : 'L'}`, (id) =>
+    `<clipPath id="${id}" clipPathUnits="userSpaceOnUse"><path d="${fillPath}"/></clipPath>`,
+  );
+  /** 耳の外周でクリップして描く。 */
+  const inEar = (inner: string): string =>
+    inner ? `<g clip-path="${url(clipId)}">${inner}</g>` : '';
+  /**
+   * 耳の見た目の中心。`open` に書かれている座標（通過点と制御点）の平均。
+   *
+   * 【`center`（根元の中点）と `apex`（先端）の中間で代用しない】
+   *   最初そうしたら、まるみみ で内耳が **頭寄りの三日月** になった。
+   *   耳は外へ大きくふくらむので、ふくらみを作っているのは通過点ではなく
+   *   **制御点**。制御点を数に入れない中心は、実際の面の中心より
+   *   かなり内側（頭側）に来る。ベジエ曲線は制御多角形の凸包に必ず
+   *   収まるので、その平均は形がどう変わっても面の中に入る。
+   */
+  const hub = ((): Vec => {
+    const nums = (open.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+    let sx = 0;
+    let sy = 0;
+    let cnt = 0;
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      sx += nums[i]!;
+      sy += nums[i + 1]!;
+      cnt++;
     }
+    return cnt ? { x: sx / cnt, y: sy / cnt } : center;
+  })();
+
+  /**
+   * 耳の外周を `pivot` を中心に `k` 倍へ縮めた面。
+   * 相似形なので、中身が外周とまったく同じ曲がりかたをする。
+   */
+  const shrunkEar = (k: number, pivot: Vec, fill: string, opacity: number): string =>
+    inEar(
+      `<g transform="translate(${n(pivot.x * (1 - k))} ${n(pivot.y * (1 - k))}) scale(${n(k)})">` +
+      path(fillPath, { fill, opacity }) +
+      `</g>`,
+    );
+
+  if (ctx.parts.earTip === 'tip') {
+    // 耳先の色。**先端を不動点** にして縮めるので、どの形でも
+    // 「先端だけ色が違う」になり、外周を割らない。
+    svg += shrunkEar(0.46, q.silhouette === 'flop' ? flopOuter : apex, earTipPalette(ctx).fill, 0.92);
   }
   svg += path(open, { stroke: c.inkPaint, width: ctx.strokeW, linejoin: 'round', linecap: 'round' });
 
   if (kind === 'bearEar' || kind === 'round' || kind === 'nub') {
-    svg += ellipse(center.x + side * reach * 0.55, center.y - lift * 0.42, reach * 0.3, lift * 0.25, {
-      fill: mix(c.petal, c.body, 0.45), opacity: 0.42,
-    });
+    svg += shrunkEar(0.58, hub, mix(c.petal, c.body, 0.45), 0.42);
   } else if (kind === 'leafEar' || kind === 'roundLeafEar') {
-    svg += path(`M${n(lower.x)} ${n(lower.y)}Q${n(center.x + side * reach * 0.58)} ${n(center.y - lift * 0.42)} ${n(apex.x)} ${n(apex.y)}`, {
-      stroke: c.leafDark, width: ctx.strokeThin * 0.8, opacity: 0.68, linecap: 'round',
-    });
+    // このはみみは面ではなく葉脈 1 本。根元の中点から先端へ、外側へ
+    // わずかにふくらませて引く（旧実装は `lower`（根元の下端）から
+    // 引いていたので、線の端が体の上へ落ちていた）。
+    const a = mixVec(center, hub, 0.34);
+    const b = mixVec(hub, apex, 0.86);
+    svg += inEar(
+      path(
+        `M${n(a.x)} ${n(a.y)}` +
+        `Q${n((a.x + b.x) / 2 + side * reach * 0.12)} ${n((a.y + b.y) / 2)} ${n(b.x)} ${n(b.y)}`,
+        { stroke: c.leafDark, width: ctx.strokeThin * 0.8, opacity: 0.68, linecap: 'round' },
+      ),
+    );
   } else if (kind === 'catEar') {
-    const innerUpper = mixVec(upper, apex, 0.3);
-    const innerLower = mixVec(lower, apex, 0.28);
-    svg += path(
-      `M${n(innerUpper.x)} ${n(innerUpper.y)}` +
-      `L${n(apex.x)} ${n(apex.y + lift * 0.18)}` +
-      `L${n(innerLower.x)} ${n(innerLower.y)}Z`,
-      { fill: mix(c.petal, c.body, 0.34), opacity: 0.66 },
-    );
+    svg += shrunkEar(0.56, mixVec(hub, apex, 0.22), mix(c.petal, c.body, 0.34), 0.66);
   } else if (kind === 'longEar') {
-    svg += path(
-      `M${n(upper.x + side * reach * 0.16)} ${n(upper.y - lift * 0.06)}` +
-      `Q${n(apex.x + side * reach * 0.04)} ${n(apex.y + lift * 0.32)}` +
-      ` ${n(lower.x + side * reach * 0.25)} ${n(lower.y - lift * 0.1)}` +
-      `Q${n(center.x + side * reach * 0.58)} ${n(center.y - lift * 0.42)}` +
-      ` ${n(upper.x + side * reach * 0.16)} ${n(upper.y - lift * 0.06)}Z`,
-      { fill: mix(c.petal, c.body, 0.4), opacity: 0.58 },
-    );
+    svg += shrunkEar(0.54, mixVec(hub, apex, 0.22), mix(c.petal, c.body, 0.4), 0.58);
   } else if (kind === 'flopEar') {
-    svg += ellipse(center.x + side * reach * 0.64, center.y + lift * 0.46, reach * 0.26, lift * 0.24, {
-      fill: mix(c.petal, c.body, 0.38), opacity: 0.56,
-    });
+    svg += shrunkEar(0.56, hub, mix(c.petal, c.body, 0.38), 0.56);
   }
   const xPad = kind === 'flopEar' ? reach * 0.12 + 2 : reach * 0.45 + 4;
   const x0 = Math.min(upper.x, lower.x, apex.x, ...(kind === 'flopEar' ? [flopOuter.x] : [])) - xPad;
