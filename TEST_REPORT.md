@@ -69,14 +69,15 @@ E2E の主要な検査は、実際に一度壊した箇所の回帰テスト。
 | `tests/save.test.ts` | 69 | 保存/読込・破損復旧・バックアップ・チェックサム・ショップ整合性 |
 | `tests/migrate.test.ts` | 32 | v1→…→v7 連鎖マイグレーション |
 | `tests/genetics.test.ts` | 25 | seed再現性・表現型変換・500体生成・支配的形質の検査（`eyeGlint`／`irisTone` は「稀に」が要件なので `DEFAULT_HEAVY` 側） |
+| `tests/grading.test.ts` | 22 | 鑑定の課金・開示範囲・**未鑑定からの情報漏れ**（市場価格・展示会・並び順）・レポートと表現型の突き合わせ・フレーバーの決定論と分布 |
 | `tests/breeding.test.ts` | 17 | 交配・優性潜性・突然変異・親子/兄弟類似性・多世代多様性・希少度分布 |
+| `tests/coat.test.ts` | 13 | 体毛が viewBox と接地線を越えないこと・種類の描き分け・不良を増やさないこと |
 | `tests/game.test.ts` | 13 | 世話・展示会・ショップ・クールダウン永続化 |
 | `tests/cards.test.ts` | 12 | カードの決定論・CSS の制御文字と波かっこの対応 |
 | `tests/field.test.ts` | 11 | 飼育フィールドの生活状態・排泄物・配置 |
 | `tests/render.test.ts` | 11 | 1000 体で描画不良・非決定的 SVG を出さないこと／耳は **縮小したグループの中に `stroke=` を入れない**（`scaledStroke`。内耳の面は外周の相似縮小なので `scale(` 自体は出る。D-039） |
 | `tests/inspect.test.ts` | 9 | **描画の自動検査そのものの検査**（見逃しと誤検出の両方を固定） |
 | `tests/lashes.test.ts` | 9 | まつげと目の位置関係・体からのはみ出しを増やさないこと |
-| `tests/coat.test.ts` | 8 | 体毛が viewBox と接地線を越えないこと・種類の描き分け・不良を増やさないこと |
 | `tests/progression.test.ts` | 8 | 通しプレイ・進行不能検査・オフライン・間欠プレイ |
 | `tests/icons.test.ts` | 6 | UI アイコン名の実在・同一画面内の重複・自己完結した SVG であること |
 | `tests/integration.test.ts` | 6 | 複数世代の交配・どの段階でも次の案内が出ること |
@@ -84,7 +85,7 @@ E2E の主要な検査は、実際に一度壊した箇所の回帰テスト。
 | `tests/satiation.test.ts` | 4 | 連打が有利にならないこと（1 秒あたり効率・必要クリック数） |
 | `tests/contrast.test.ts` | 3 | 牛柄とインクの 3.0:1 を**明暗両テーマ**で固定 |
 | `tests/staff.test.ts` | 3 | 飼育員の募集・雇用・報酬 |
-| **合計** | **250** | 18 ファイル |
+| **合計** | **277** | 19 ファイル |
 
 ## 遺伝の統計検証（実測値）
 
