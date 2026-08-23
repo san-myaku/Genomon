@@ -103,7 +103,7 @@ const zygosityLabel = (z: 'homozygous' | 'heterozygous'): string =>
  * レポートの並び順。
  *
  * 【なぜ並べ替えるのか】
- *   26 座を カタログ順に そのまま出すと、`結晶 HOMO なし/なし` のような
+ *   全カテゴリ座を カタログ順に そのまま出すと、`結晶 HOMO なし/なし` のような
  *   「何も起きていない行」と、`耳先色 HET なし/みみさき色` のような
  *   **次の世代に効く行** が同じ重さで並ぶ。260 行ぶん目で探すのは
  *   レポートではなく資料。読む順を、育種に効く順にする。
@@ -156,7 +156,8 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       { k: '世代', v: generationLabel(c.generation) },
       { k: 'seed', v: c.seed },
       { k: '見えている珍しい形質', v: stage === 'adult' ? `${notableCount} か所` : '？' },
-      { k: '潜在形質', v: report ? `${carrierCount} か所` : '未鑑定' },
+      // 「潜在形質 N か所」はここへ出さない。この欄は観察の概要で、
+      // 保因数は鑑定書を読んで初めて分かる遺伝情報。全遺伝子レポート側へ置く。
     ]
       .map(
         (o) =>
@@ -193,7 +194,14 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
           : `<p class="section__note" style="margin:0">${esc(rarityMaskNote(stage))}</p>`;
 
     // ── 特徴一覧 ──
-    // carrier は鑑定後だけ。発現している特徴そのものは今までどおり観察できる。
+    //
+    // 【ここは純粋な表現型だけ。鑑定済みでも遺伝情報を混ぜない】
+    //   以前は鑑定後にこの欄へも「かくれて持つ：〇〇」を出していた。
+    //   すると同じ内容が「見えている特徴」と「全遺伝子レポート」の
+    //   2 か所に並び、しかも **観察した結果と、書類を読んで分かった結果**
+    //   という性質の違う情報が同じ見た目で混ざっていた。
+    //   欄の役割を分ける ── ここは「目で見て分かること」だけ、
+    //   保因・ホモ/ヘテロ・姿に出ない発現はすべて全遺伝子レポートへ集約する。
     const traitsHtml =
       traits.length > 0
         ? `<div class="traits">` +
@@ -203,7 +211,6 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
                 `<div class="trait${t.notable ? ' trait--notable' : ''}">` +
                 `<div class="trait__k">${esc(t.label)}${t.notable ? ` ${icon('spark', { scale: 0.8, label: 'めずらしい特徴' })}` : ''}</div>` +
                 `<div class="trait__v">${esc(t.value)}</div>` +
-                (report && t.carrier ? `<div class="trait__c">かくれて持つ：${esc(t.carrier)}</div>` : '') +
                 `</div>`,
             )
             .join('') +
@@ -223,8 +230,10 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       : stage === 'adult'
         ? `<div class="card card--tight">` +
           `<p style="margin-top:0"><strong>この子が かくれて持っている ものを 調べます。</strong></p>` +
-          `<p class="section__note">見た目に出ている形質は、この子が持つ遺伝子の半分でしかありません。` +
-          `鑑定すると、もう半分（かくれて持つ形質）・ホモ/ヘテロ・正確な希少度と内訳が、永久に開示されます。</p>` +
+          // 「遺伝子の半分」とは言わない。どの座も対立遺伝子を 2 つ持っていて、
+          // 見えていないのは「半分の座」ではなく「各座のもう一方が何か」。
+          `<p class="section__note">見た目だけでは、それぞれの遺伝子座で もう一方に 何を持っているかまでは 分かりません。` +
+          `鑑定すると、対立遺伝子の 組み合わせ・ホモ/ヘテロ・正確な希少度と内訳が、永久に開示されます。</p>` +
           `<p class="section__note">交配の 遺伝予測も、両親を 鑑定して はじめて 出せます。</p>` +
           `<div class="row"><span class="pill">鑑定料 ${APPRAISAL_COST} コイン</span>` +
           `<button type="button" class="btn btn--brass" data-act="appraise"${availability.ok ? '' : ' disabled'}>` +
@@ -245,7 +254,7 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
     // ── 全遺伝子レポート ───────────────────────────────
     //
     // 【読む順を、育種に効く順にする】
-    //   26 + 24 座をカタログ順に並べると、`結晶 HOMO なし/なし` のような
+    //   全座（カテゴリ + 数値）をカタログ順に並べると、`結晶 HOMO なし/なし` のような
     //   何も起きていない行と、`耳先色 HET なし/みみさき色` のような
     //   次の世代に効く行が同じ重さで並ぶ。まず「見どころ」を数行にまとめ、
     //   そのあと全座を注目順で出す。数値座は既定で畳む（読む頻度が低い）。
@@ -274,11 +283,18 @@ export function screenDetail(app: App, host: HTMLElement, params: string[]): Scr
       ? `<div class="card card--tight">` +
         `<p class="section__note" style="margin:0 0 var(--sp-3)">` +
         `<strong>HOMO</strong>＝同じ形質を 2 つ持っている（子にも必ず渡す）。` +
-        `<strong>HET</strong>＝ちがう形質を 1 つずつ持っていて、片方だけが姿に出ている。` +
-        `出ていない方が「かくれて持つ形質」で、交配で子に出ることがあります。</p>` +
+        // 【「片方だけが姿に出ている」とは書かない】
+        //   この作品には共優性がある（優性度が同じで両方 coDominant なら、
+        //   このは＋はな → 「はなとこのは」のように **両方が混ざって出る**）。
+        //   HET を「片方だけ」と説明すると、その個体の欄に
+        //   「両方が混ざって出ている」と書いてあることと矛盾する。
+        `<strong>HET</strong>＝ちがう形質を 1 つずつ 持っている。` +
+        `片方だけが 姿に出ることも、両方が 混ざって出ることも あります。` +
+        `姿に出ていない方が「かくれて持つ形質」で、交配で 子に出ることがあります。</p>` +
         (highlights.length > 0
           ? `<ul class="lines" style="margin:0 0 var(--sp-3)">${highlights.map((h) => `<li>${h}</li>`).join('')}</ul>`
           : `<p class="section__note" style="margin:0 0 var(--sp-3)">かくれて持つ めずらしい形質は ありませんでした。</p>`) +
+        `<p class="section__note" style="margin:0 0 var(--sp-3)">かくれて持っている形質は <strong>${carrierCount} か所</strong>。</p>` +
         `<details open><summary><strong>すべての形質 ${report.categorical.length} 座</strong>` +
         `（HOMO ${report.summary.homozygous} ／ HET ${report.summary.heterozygous}）</summary>` +
         `<div class="traits" style="margin-top:var(--sp-3)">` +

@@ -12,14 +12,29 @@
  *   - 希少度（rarity）の伏せ方は genetics 側に無いので、ここで面倒を見る。
  *     `rarity.reasons` は「目が 3 つある」「羽がある」のように
  *     成体で生える器官を名指しするため、幼体・卵では理由を出してはならない。
+ *   - **保因（carrier）はここで落とす。** 下の `visibleTraits` を参照。
  */
 
 import type { Phenotype, Rarity, Stage, TraitSummary } from '../core/types.ts';
 import { visibleTraits as geneticsVisibleTraits } from '../genetics/phenotype.ts';
 
-/** その成長段階で見せてよい特徴一覧（genetics 側の正本をそのまま使う）。 */
+/**
+ * その成長段階で「見て分かること」だけの特徴一覧。
+ *
+ * 【保因（`carrier`）を必ず落とす — D-041】
+ *   `TraitSummary.carrier` は「発現していない側の対立遺伝子」、つまり
+ *   **見ても分からない遺伝情報**。以前は詳細画面がこれを受け取って、
+ *   鑑定後に「見えている特徴」欄へも「かくれて持つ：〇〇」を出していた。
+ *   同じ内容が全遺伝子レポートにも並ぶので二重表示になり、さらに
+ *   *観察した結果* と *書類を読んで分かった結果* が同じ見た目で混ざった。
+ *
+ *   画面側の書き方の約束にせず、**型の中身ごと落とす**。こうすると
+ *   この関数を通したデータからは、うっかりでも保因を出せない。
+ *   保因・接合状態・姿に出ない発現は `deriveGeneticReport`（鑑定済み限定）
+ *   から取ること。
+ */
 export function visibleTraits(pheno: Phenotype, stage: Stage = pheno.stage): TraitSummary[] {
-  return geneticsVisibleTraits(pheno, stage);
+  return geneticsVisibleTraits(pheno, stage).map(({ carrier: _carrier, ...rest }) => rest);
 }
 
 /**
