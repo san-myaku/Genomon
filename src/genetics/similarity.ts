@@ -17,6 +17,8 @@ const PART_WEIGHTS: readonly (readonly [keyof PartExpression, number])[] = [
   ['silhouette', 1.0],
   ['eyeShape', 1.0],
   ['pupil', 0.9],
+  ['eyeGlint', 0.3],
+  ['irisTone', 0.4],
   ['mouth', 0.9],
   ['ears', 1.0],
   ['earTip', 0.35],

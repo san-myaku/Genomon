@@ -300,6 +300,9 @@ describe('9. 支配的な形質がないこと', () => {
     antennae: 'none',
     horns: 'none',
     earTip: 'none',
+    // 目のきらめき・目のグラデは「稀に」が要件なので、既定値が重いのは設計どおり。
+    eyeGlint: 'none',
+    irisTone: 'none',
     wings: 'none',
     crystal: 'none',
     collar: 'none',
