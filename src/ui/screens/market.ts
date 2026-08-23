@@ -132,7 +132,7 @@ export function screenMarket(app: App, host: HTMLElement): Screen {
       ) +
         section(
           '販売する個体を 選ぶ',
-          `<p class="section__note">市場価格は状態・見た目・展示実績・世代などから算出します。未鑑定では詳細な価値の内訳を伏せます。</p>` +
+          `<p class="section__note">市場価格は 見た目・体調・展示実績・世代から 算出します。遺伝的な めずらしさが 評価に 加わるのは、鑑定書の ある子だけです。</p>` +
             `<div class="market-candidates">${cards}</div>`,
           '販売後も 2 体は残るように保護されています。',
           'sprout',

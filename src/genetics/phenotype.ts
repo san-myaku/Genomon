@@ -532,21 +532,44 @@ function buildTraits(
 ): TraitSummary[] {
   const out: TraitSummary[] = [];
 
+  const partsById = parts as unknown as Record<string, unknown>;
+
   for (const locus of TRAIT_ORDER) {
     const e = expr[locus];
-    // 耳先色は耳がないと見た目に発現しないため、表示値も最終 parts に合わせる。
-    const valueId = locus === 'earTip' ? parts.earTip : e.id;
+    // ── 「見えている特徴」は、遺伝的な発現ではなく **実際に描かれた値** ──
+    //
+    //   素体の都合で、発現しているのに描かれない座がある。
+    //     耳先色 … 耳が無ければ塗る場所が無い
+    //     羽     … スライム素体には生えない
+    //     足     … まる素体では体に吸収される
+    //   ここは詳細画面の「見えている 特徴」欄になる。遺伝的な発現を出すと、
+    //   足の生えていない子の欄に「足：ちょこあし」と書かれ、すぐ下の
+    //   全遺伝子レポートの「姿には出ていません」と真正面から矛盾する
+    //   （実ブラウザで実際にそうなっていた）。
+    //
+    //   座ごとに if を足すのではなく、**parts に描かれた id があれば
+    //   そちらを正とする** 一つの規則にする。ふつうの座は
+    //   `parts[locus] === e.id` なので、この分岐で挙動が変わるのは
+    //   描かれかたが差し替わる座だけ。
+    //   `eyeCount` は数値、`base`/`palette` は parts に無いので、
+    //   どちらも `e.id` 側へ落ちる。
+    const drawn = partsById[locus];
+    const shownId = typeof drawn === 'string' ? drawn : e.id;
+    const shown = shownId === e.id;
     const t: TraitSummary = {
       locus,
       label: CAT_LOCUS_BY_ID[locus].label,
-      value: locus === 'earTip' ? alleleLabel(locus, valueId) : e.label,
+      value: shown ? e.label : alleleLabel(locus, shownId),
     };
     // 発現していない側の対立遺伝子＝この子が保因している形質。
     // 「おじいちゃん譲りの形質かも」という楽しさの源になるので必ず入れる。
+    // （詳細画面の観察欄へは出さない ── UI 層の visibleTraits が落とす。D-041）
     if (e.hidden && e.hidden !== e.id) {
       t.carrier = alleleLabel(locus, e.hidden);
     }
-    if (e.notable && (locus !== 'earTip' || valueId !== 'none')) t.notable = true;
+    // 姿に出ていない形質に「めずらしい」の印は付けない。印は画面上の
+    // 特徴を指すもので、見えないものを指せば嘘になる。
+    if (e.notable && shown) t.notable = true;
     out.push(t);
   }
 

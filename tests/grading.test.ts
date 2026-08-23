@@ -216,12 +216,15 @@ describe('レポートが実際の表現型と食い違わないこと', () => {
         const trait = pheno.traits.find((t) => t.locus === row.locus);
         if (!trait) continue; // traits に載らない座（発光・2色ほか）は比較対象外
 
-        // 【`耳先色` だけ traits の作りが違う】
-        //   `buildTraits` は耳先色に限って **描かれた値** を出し、
-        //   羽・足は遺伝的な発現をそのまま出す（phenotype.ts の作りがそうなっている）。
-        //   ここではレポートが遺伝的な発現を正しく持っているかを見たいので、
-        //   耳先色だけ描かれた側と突き合わせる。
-        const expected = row.locus === 'earTip' && row.suppressed ? row.suppressed.label : row.expressedLabel;
+        // 【`traits` は「描かれた値」、レポートは「遺伝的な発現」】
+        //   `buildTraits` は姿に出ている値を出す。素体の都合で発現が
+        //   描かれない座（耳先色・羽・足）では、そこがレポートの
+        //   `expressedLabel` とわざと食い違う。食い違う場合の正解は
+        //   レポート側が添えている `suppressed.label`（＝描かれた値）。
+        //   以前は耳先色だけを特別扱いしていたが、`buildTraits` が
+        //   座ごとの if をやめて 1 つの規則になったので、こちらも
+        //   **全座で同じ突き合わせ** にする（見る範囲は広がっている）。
+        const expected = row.suppressed ? row.suppressed.label : row.expressedLabel;
         if (trait.value !== expected) {
           mismatched.push(`${row.locus} 発現 ${expected} ≠ ${trait.value}`);
         }
