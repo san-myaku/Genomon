@@ -86,8 +86,13 @@ test.describe('Cards Lab — フレーバーの版面', () => {
         lineH: parseFloat(cs.lineHeight),
       };
     });
-    // 430px のカードで 6px だった。文として読める下限を割らないこと。
-    expect(m.fontPx / m.cardW).toBeGreaterThan(0.021);
+    // 【カード幅比ではなく px の下限で見る】
+    //   最初の版は 6.1px しかなく読めなかったので、カード幅に対する比率で
+    //   下限を引いていた。その後フレーバーをさらに小さくする判断になり、
+    //   スマホでは **px の下限（max(8px, .58em)）が先に効く** ようになった。
+    //   比率で見ると「下限を守ったこと」を失敗として数えてしまうので、
+    //   文として読める絶対の大きさそのものを見る。
+    expect(m.fontPx).toBeGreaterThanOrEqual(7.5);
     // 2 行を超えて版面を押し広げないこと。
     expect(m.h).toBeLessThanOrEqual(m.lineH * 2 + 2);
   });
@@ -102,32 +107,7 @@ test.describe('Cards Lab — フレーバーの版面', () => {
     await expect(page.locator('#cards-cmp-design .gmc-flavor')).toHaveCount(4);
   });
 
-  /**
-   * 【フレーバーは左下・最後に読むもの（§9）】
-   *   目に最初に入るのは絵 → 段 → 認証印。フレーバーは
-   *   「よく見たら書いてある」くらいの位置と大きさに留める。
-   */
-  test('Collector v2 ではカードの左下に、名前より小さく置かれている', async ({ page }) => {
-    await openCards(page);
-    const m = await page.evaluate(() => {
-      const card = document.querySelector('#cards-showcase .gmc-card')!;
-      const cb = card.getBoundingClientRect();
-      const fb = card.querySelector('.gmc-flavor')!.getBoundingClientRect();
-      const name = card.querySelector('.gmc-v-name')!;
-      const flavorSpan = card.querySelector('.gmc-flavor span')!;
-      return {
-        left: (fb.left - cb.left) / cb.width,
-        bottom: (fb.bottom - cb.top) / cb.height,
-        right: (fb.right - cb.left) / cb.width,
-        nameFont: parseFloat(getComputedStyle(name).fontSize),
-        flavorFont: parseFloat(getComputedStyle(flavorSpan).fontSize),
-      };
-    });
-    // 左下の領域に収まっていること
-    expect(m.left).toBeLessThan(0.12);
-    expect(m.bottom).toBeGreaterThan(0.86);
-    expect(m.right).toBeLessThanOrEqual(1);
-    // 名前より明らかに小さいこと（主役を食わない）
-    expect(m.flavorFont).toBeLessThan(m.nameFont * 0.6);
-  });
+  // 【左下に置かれていること・名前より小さいことは 08-cards-v2 が見る】
+  //   あちらは枠を持たないこと・斜体であること・狭い画面では比率ではなく
+  //   px の下限で見ることまで含めて検査している。二重に持たない。
 });
