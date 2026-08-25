@@ -44,10 +44,13 @@ import {
   rankMaxScore,
   rankOfScore,
   resolveRank,
+  scorePercentile,
+  topPercentText,
   type CardRank,
 } from '../src/dev/cardRarity.ts';
+import { deriveGeneticReportOf } from '../src/game/grading.ts';
 import { deriveLabHistory } from '../src/dev/cardHistory.ts';
-import { sealBlock, sealSvg, sealUid } from '../src/dev/cardSeal.ts';
+import { sealBlock, sealSvg, sealStamp, sealUid } from '../src/dev/cardSeal.ts';
 import { cardBackHtml } from '../src/dev/cardBack.ts';
 import type { CardSpec } from '../src/dev/cardDesign.ts';
 
@@ -65,6 +68,7 @@ function specOf(seed: string, rank: CardRank | 'auto' = 'auto'): CardSpec {
     genotype: genoOf(seed),
     facts: deriveCardFacts(pheno, 9),
     history: deriveLabHistory(seed, treatment.def.id),
+    report: deriveGeneticReportOf(genoOf(seed), seed),
     rank: treatment,
     design: 'collectorV2',
     finish: resolveFinish('auto', treatment.def.id),
@@ -340,6 +344,105 @@ describe('cardRarity — 強制表示は見た目だけ（§19）', () => {
   });
 });
 
+describe('cardSeal — 押されかたの揺らぎ（§9）', () => {
+  const SEEDS20 = Array.from({ length: 24 }, (_, i) => `stamp-${i}`);
+
+  it('同じ個体なら、押されかたは 1 ビットも変わらない', () => {
+    for (const seed of SEEDS20.slice(0, 8)) {
+      expect(sealStamp(seed, 'ink')).toEqual(sealStamp(seed, 'ink'));
+      expect(sealStamp(seed, 'holo')).toEqual(sealStamp(seed, 'holo'));
+    }
+  });
+
+  /**
+   * 【全部同じ角度・同じ場所に見えないこと（§20）】
+   *   ここが崩れると「印刷済みの UI」に戻る。24 個体で
+   *   角度・位置の組がひとつも重複しないことを機械的に見る。
+   */
+  it('個体ごとに角度・位置・大きさ・濃さが変わる', () => {
+    const stamps = SEEDS20.map((s) => sealStamp(s, 'ink'));
+    const keys = stamps.map((t) => `${t.rotate.toFixed(2)}/${t.x.toFixed(2)}/${t.y.toFixed(2)}`);
+    expect(new Set(keys).size).toBe(SEEDS20.length);
+
+    const spread = (v: number[]): number => Math.max(...v) - Math.min(...v);
+    // 「バラバラすぎない」側も見る。範囲を広げすぎると貼り間違えに見える。
+    expect(spread(stamps.map((t) => t.rotate))).toBeGreaterThan(10);
+    expect(spread(stamps.map((t) => t.rotate))).toBeLessThanOrEqual(22);
+    expect(spread(stamps.map((t) => t.x))).toBeGreaterThan(3);
+    expect(spread(stamps.map((t) => t.y))).toBeGreaterThan(6);
+  });
+
+  it('どの個体でも安全な範囲に収まる（カードの外へ出ない・潰れない）', () => {
+    for (const seed of SEEDS20) {
+      for (const material of ['ink', 'silver', 'holo'] as const) {
+        const t = sealStamp(seed, material);
+        expect(t.rotate, seed).toBeGreaterThanOrEqual(-12);
+        expect(t.rotate, seed).toBeLessThanOrEqual(10);
+        expect(t.x, seed).toBeGreaterThanOrEqual(2);
+        expect(t.y, seed).toBeGreaterThanOrEqual(52);
+        // 下端が脚（フレーバー）へ掛からない高さで止める。
+        expect(t.y, seed).toBeLessThanOrEqual(66);
+        expect(t.scale, seed).toBeGreaterThanOrEqual(0.94);
+        expect(t.scale, seed).toBeLessThanOrEqual(1.06);
+        // 読めない印にはしない。
+        expect(t.opacity, seed).toBeGreaterThanOrEqual(0.8);
+      }
+    }
+  });
+
+  /**
+   * 【箔は押しムラより圧着差の程度に留める（§10）】
+   *   インクは押し圧の差が大きく、箔はほとんど均一。
+   */
+  it('インクは濃さのムラが大きく、箔はほぼ均一', () => {
+    const inks = SEEDS20.map((s) => sealStamp(s, 'ink'));
+    const foils = SEEDS20.map((s) => sealStamp(s, 'gold'));
+    const mean = (v: number[]): number => v.reduce((a, b) => a + b, 0) / v.length;
+    expect(mean(inks.map((t) => t.inkFade))).toBeGreaterThan(mean(foils.map((t) => t.inkFade)) * 2);
+    for (const t of foils) expect(t.opacity).toBeGreaterThanOrEqual(0.94);
+  });
+
+  it('押しムラは決定論で、SVG に焼き込まれる', () => {
+    const t = sealStamp('stamp-3', 'ink');
+    const svg = sealSvg({
+      material: 'ink',
+      certId: 'GM-00012345',
+      certifiedOn: '2025.06.01',
+      uid: 'u9',
+      security: 0,
+      ink: { seed: t.inkSeed, fade: t.inkFade },
+    });
+    expect(svg).toContain('feTurbulence');
+    expect(svg).toContain(`seed="${t.inkSeed}"`);
+    // ムラを指定しなければ均一な印のまま（比較・一覧で計算を増やさない）。
+    const plain = sealSvg({
+      material: 'ink', certId: 'GM-00012345', certifiedOn: '2025.06.01', uid: 'u9', security: 0,
+    });
+    expect(plain).not.toContain('feTurbulence');
+  });
+});
+
+describe('cardRarity — 分布の中での位置（裏面のゲージ）', () => {
+  it('累積分布は単調で、0..1 に収まる', () => {
+    let prev = -1;
+    for (let sc = 0; sc <= 100; sc += 1) {
+      const p = scorePercentile(sc);
+      expect(p).toBeGreaterThanOrEqual(0);
+      expect(p).toBeLessThanOrEqual(1);
+      expect(p).toBeGreaterThanOrEqual(prev);
+      prev = p;
+    }
+  });
+
+  it('段が上がるほど「上位 x%」が小さくなる（表示と実データが一致する）', () => {
+    const tops = CARD_RANKS.map((d) => 1 - scorePercentile(d.minScore));
+    for (let i = 1; i < tops.length; i++) expect(tops[i]!).toBeLessThan(tops[i - 1]!);
+    expect(topPercentText(CARD_RANKS[0]!.minScore)).toMatch(/^TOP /);
+    // MYTHIC の下限は実測で上位 1% を切っている。
+    expect(1 - scorePercentile(CARD_RANK_BY_ID.mythic.minScore)).toBeLessThan(0.01);
+  });
+});
+
 describe('cardSeal — 認証印', () => {
   const MATERIALS = ['ink', 'inkFoil', 'silver', 'gold', 'holo'] as const;
 
@@ -393,7 +496,7 @@ describe('cardSeal — 認証印', () => {
 describe('cardBack — 裏面', () => {
   it('遺伝の欄は実データ。座の数はカタログから取る（固定値を書かない）', () => {
     const html = cardBackHtml(specOf('CARD-A'));
-    expect(html).toContain(`${CAT_LOCI.length}<i>cat</i>${NUM_LOCI.length}<i>num</i>`);
+    expect(html).toContain(`${CAT_LOCI.length} cat · ${NUM_LOCI.length} num`);
     expect(html).toContain(`${CAT_LOCI.length + NUM_LOCI.length} LOCI`);
   });
 
@@ -402,7 +505,7 @@ describe('cardBack — 裏面', () => {
       const html = cardBackHtml(specOf(seed));
       const rows = (html.match(/<tr>/g) ?? []).length;
       expect(rows).toBeLessThanOrEqual(6);
-      expect(html).toContain('GENETIC SUMMARY');
+      expect(html).toContain('GENETIC COMPOSITION');
       expect(html).toContain('NOTABLE GENES');
     }
   });
@@ -410,7 +513,7 @@ describe('cardBack — 裏面', () => {
   it('血統・交配・展示・認証・QR の欄がそろっている（§13）', () => {
     const html = cardBackHtml(specOf('CARD-B'));
     for (const key of [
-      'IDENTIFICATION', 'RARITY', 'GENETIC SUMMARY', 'NOTABLE GENES',
+      'IDENTIFICATION', 'RARITY', 'GENETIC COMPOSITION', 'TRAIT PROFILE', 'NOTABLE GENES',
       'PEDIGREE', 'BREEDING RECORD', 'SHOW RECORD',
       'GENOMON', 'APPRAISAL OFFICE', 'FULL GENETIC REPORT',
     ]) {
@@ -516,7 +619,7 @@ describe('cardStyles — テンプレートリテラルの事故を防ぐ', () =
 
   it('段ごとの帯と認証印の素材が CSS 側にそろっている', () => {
     for (const def of CARD_RANKS) {
-      expect(CARD_CSS, def.band).toContain(`.gmc-v-band--${def.band}`);
+      expect(CARD_CSS, def.band).toContain(`.gmc-v-rank--${def.band}`);
       expect(CARD_CSS, def.seal).toContain(`.gmc-seal--${def.seal}`);
     }
     // ホロ箔だけが分光する。銀・金は方向のある艶。

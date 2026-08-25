@@ -45,6 +45,7 @@ import {
 } from '@kongyo2/cards-css';
 
 import type { Genotype, Phenotype } from '../core/types.ts';
+import type { GeneticReport } from '../game/grading.ts';
 import { hslToHex, mix } from '../core/color.ts';
 import { esc } from '../ui/dom.ts';
 import {
@@ -67,7 +68,7 @@ import {
   type CardQuality,
 } from './cardModel.ts';
 import { pipHtml, type RankTreatment, type SealMaterial } from './cardRarity.ts';
-import { sealBlock, sealUid } from './cardSeal.ts';
+import { sealBlock, sealStamp, sealUid } from './cardSeal.ts';
 
 // ─────────────────────────────────────────────────────────
 //  設定
@@ -108,6 +109,15 @@ export interface CardSpec {
   facts: CardFacts;
   /** Lab 専用の仮の経歴（親・展示・発行番号）。 */
   history: LabCardHistory;
+  /**
+   * 本編とまったく同じ遺伝レポート（`deriveGeneticReportOf`）。
+   *
+   * 【1 枚につき 1 回だけ計算する】
+   *   表の 1 行要約と裏面の図表が同じ数字を指す必要がある。別々に計算すると
+   *   ずれる余地が生まれるうえ、二度手間になる（実測 0.15ms/件なので
+   *   一覧 30 枚でも 4ms、まとめて計算して困らない）。
+   */
+  report: GeneticReport;
   /** 解決済みの段（強制表示なら forced が立つ）。 */
   rank: RankTreatment;
   design: CardDesign;
@@ -369,7 +379,12 @@ export function holoOptionsFor(spec: CardSpec, face: 'front' | 'back' = 'front')
   };
 
   if (visuals.mask && def.effect !== 'none') {
-    opts.mask = { image: foilMaskUri(design, rank.def), size: '100% 100%', mode: 'shine' };
+    // 印の実際の中心をマスクへ渡す（押される場所と光る場所を合わせる）。
+    // 幅はカード幅の 34%、作画系（630x880）は等方なのでそのまま換算できる。
+    const st = sealStamp(facts.seed, sealMaterialOf(spec));
+    const r = 0.34 * 630 * 0.5;
+    const spot = { cx: 630 - (st.x / 100) * 630 - r, cy: (st.y / 100) * 880 + r, r };
+    opts.mask = { image: foilMaskUri(design, rank.def, spot), size: '100% 100%', mode: 'shine' };
   }
   if (layers.length) opts.layers = layers;
   if (visuals.depth && (full || medium)) {
@@ -652,22 +667,32 @@ function collectorV2Front(spec: CardSpec): string {
   const f = spec.facts;
   const h = spec.history;
   const rank = spec.rank;
+  const sum = spec.report.summary;
   const lite = spec.quality === 'lite';
   // 特徴は 2〜4 個。多いほど賑やかになるが、5 個目からは版面が濁る。
   const traits = f.headlineTraits.slice(0, 4);
 
-  const seal = lite
-    ? ''
-    : `<div class="gmc-v-seal">` +
-      sealBlock({
-        material: sealMaterialOf(spec),
-        certId: f.certId,
-        certifiedOn: h.certifiedOn,
-        uid: sealUid(f.seed, `v2-${spec.quality}`),
-        security: rank.def.security,
-        compact: spec.quality === 'medium',
-      }) +
-      `</div>`;
+  // 【印は情報欄の外・カード全面を基準に置く（§8・§16）】
+  //   以前は情報欄に右 23% の柱を予約して、そこへ収めていた。
+  //   きれいに収まるぶん「レイアウトされた UI」に見えるので、
+  //   カードを基準に置いて **traits や meta に少し重ねる**。
+  //   位置・角度・大きさ・濃さは個体ごとに変わる（sealStamp）。
+  const material = sealMaterialOf(spec);
+  const stamp = sealStamp(f.seed, material);
+  const seal =
+    `<div class="gmc-v-seal">` +
+    sealBlock({
+      material,
+      certId: f.certId,
+      certifiedOn: h.certifiedOn,
+      uid: sealUid(f.seed, `v2-${spec.quality}`),
+      security: rank.def.security,
+      // 一覧・比較では地紋と押しムラを省く（30 枚ぶんの turbulence は重い）。
+      compact: spec.quality !== 'full',
+      ...(spec.quality === 'full' ? { ink: { seed: stamp.inkSeed, fade: stamp.inkFade } } : {}),
+      stamp,
+    }) +
+    `</div>`;
 
   return (
     `<div class="gmc-paper"></div>` +
@@ -677,35 +702,50 @@ function collectorV2Front(spec: CardSpec): string {
     `<div class="gmc-k-scrim"></div>` +
     `<div class="gmc-v-edge" aria-hidden="true"></div>` +
     `<div class="gmc-body">` +
+    // ── 上のレール。**右上が「格を読む場所」**（§11）──
+    //   以前は記号だけを右上に置き、名前と点数は絵の下の帯に出していた。
+    //   同じ希少度が 2 か所に散っていたので、名前・点数・記号を
+    //   ひとつのまとまりへ統合してある。段の素材はこの塊が背負う。
     `<header class="gmc-v-rail">` +
     `<div class="gmc-wordmark">GENOMON</div>` +
-    `<div class="gmc-v-pips" role="img" aria-label="希少度 ${esc(rank.def.label)}">${pipHtml(rank.def)}</div>` +
+    `<div class="gmc-v-rank gmc-v-rank--${rank.def.band}" role="img" ` +
+    `aria-label="希少度 ${esc(rank.def.label)} ${rank.score.toFixed(1)}">` +
+    `<b class="gmc-v-rankname">${esc(rank.def.label)}</b>` +
+    `<span class="gmc-v-rankline">` +
+    `<span class="gmc-v-score">${rank.score.toFixed(1)}</span>` +
+    `<span class="gmc-v-pips">${pipHtml(rank.def)}</span>` +
+    `</span>` +
+    `</div>` +
     `</header>` +
     artWindow(spec) +
     `<div class="gmc-v-info">` +
-    // ── 段の帯。ここだけで「一瞬で格が分かる」ことを担保する ──
-    `<div class="gmc-v-band gmc-v-band--${rank.def.band}">` +
-    `<b class="gmc-v-rankname">${esc(rank.def.label)}</b>` +
-    `<span class="gmc-v-score">${rank.score.toFixed(1)}</span>` +
-    `</div>` +
     `<div class="gmc-v-name">${esc(f.code)}<em>${esc(f.name)}</em></div>` +
     (traits.length
       ? `<div class="gmc-v-traits">${traits.map((t) => `<span>${esc(t)}</span>`).join('')}</div>`
       : `<div class="gmc-v-traits gmc-v-traits--none"><span>${esc(f.baseLabel)}・${esc(f.paletteLabel)}</span></div>`) +
+    // 【遺伝の 1 行要約（§12）】
+    //   鑑定済みの個体のカードなので、接合状態の数は出してよい。
+    //   ただし **座の一覧は表に出さない**（それは裏面の仕事）。
+    //   一覧では 4px 以下になって読めないので作らない。
+    (lite
+      ? ''
+      : `<div class="gmc-v-gene">` +
+        `<span><b>HOMO</b>${sum.homozygous}</span>` +
+        `<span><b>HET</b>${sum.heterozygous}</span>` +
+        `<span><b>CARRIER</b>${sum.hiddenAlleles}</span>` +
+        `<span><b>NOTABLE</b>${sum.notableAlleles}</span>` +
+        `</div>`) +
     `<div class="gmc-v-meta">` +
     `<span><b>GEN</b>${esc(h.generationRoman)}</span>` +
     `<span><b>GRADE</b>${f.grade}</span>` +
     `<span><b>NO.</b>${esc(h.print.text)}</span>` +
+    `<span class="gmc-v-house"><b>HOUSE</b>${esc(f.lineage)}</span>` +
     `</div>` +
-    // 【印は情報欄の *中* に置く】
-    //   外に出すと、位置決めの基準が `.gmc`（カード全面）になり、
-    //   絵の高さが個体ごとに動くたびに印が飛ぶ（実測で card の外へ出ていた）。
-    //   情報欄が右 23% を空けてあるので、その柱に収まる。
+    `</div>` +
     seal +
-    `</div>` +
     `<footer class="gmc-v-foot">` +
     flavorBlock(spec) +
-    `<span class="gmc-v-cert">${esc(f.certId)}</span>` +
+    `<span class="gmc-v-cert">${esc(f.certId)}<i>${esc(h.certifiedOn)}</i></span>` +
     `</footer>` +
     `</div>`
   );

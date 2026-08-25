@@ -236,6 +236,54 @@ export function hasZone(def: CardRankDef, zone: FoilZone): boolean {
   return def.zones.includes(zone);
 }
 
+// ─────────────────────────────────────────────────────────
+//  分布の中での位置
+// ─────────────────────────────────────────────────────────
+
+/**
+ * 希少度スコアの累積分布（実測）。
+ *
+ * 【実測値であることが大事】
+ *   裏面の「RARITY POSITION」は「この個体は上位何 % か」を示す。
+ *   目分量の曲線を置くと **数字が嘘になる**ので、
+ *   ランダムな Genotype 20000 体を測った実データを 5 点刻みで焼いてある。
+ *
+ *   `[スコア, その点以下の割合]`。中央値は 22 前後、上位 1% が 55 前後。
+ *   希少度の計算（`buildRarity`）を変えたら、必ずここも測り直すこと:
+ *
+ *     npx vite-node tools/cardStats.ts
+ */
+const SCORE_CDF: readonly (readonly [number, number])[] = [
+  [0, 0], [5, 0.086], [10, 0.144], [15, 0.326], [20, 0.428], [25, 0.655],
+  [30, 0.772], [35, 0.878], [40, 0.924], [45, 0.951], [50, 0.977], [55, 0.983],
+  [60, 0.992], [65, 0.995], [70, 0.996], [75, 0.998], [80, 0.999], [85, 0.999],
+  [90, 0.999], [95, 0.999], [100, 1],
+];
+
+/**
+ * そのスコアが分布の下から何割の位置にいるか（0..1）。点のあいだは線形。
+ * 「上位 x%」は `1 - scorePercentile(score)`。
+ */
+export function scorePercentile(score: number): number {
+  const s = Math.max(0, Math.min(100, score));
+  for (let i = 1; i < SCORE_CDF.length; i++) {
+    const [x1, y1] = SCORE_CDF[i]!;
+    if (s <= x1) {
+      const [x0, y0] = SCORE_CDF[i - 1]!;
+      const t = x1 === x0 ? 0 : (s - x0) / (x1 - x0);
+      return y0 + (y1 - y0) * t;
+    }
+  }
+  return 1;
+}
+
+/** 「上位 2.1%」のような表示用の文字列。 */
+export function topPercentText(score: number): string {
+  const top = (1 - scorePercentile(score)) * 100;
+  if (top < 0.1) return 'TOP 0.1%';
+  return `TOP ${top < 10 ? top.toFixed(1) : Math.round(top)}%`;
+}
+
 /** 記号の並び（◆◆◆◇◇）。埋まっている数が段そのもの。 */
 export function pipText(def: CardRankDef): string {
   return '◆'.repeat(def.pips) + '◇'.repeat(CARD_RANKS.length - def.pips);

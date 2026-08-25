@@ -71,6 +71,7 @@ import {
   type CardVisuals,
   type MountedCard,
 } from './cardDesign.ts';
+import { deriveGeneticReportOf } from '../game/grading.ts';
 import { deriveLabHistory } from './cardHistory.ts';
 import {
   CARD_RANKS,
@@ -276,6 +277,9 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       genotype: sp.genotype,
       facts: deriveCardFacts(sp.pheno, st.grade),
       history: deriveLabHistory(sp.seed, rank.def.id),
+      // 本編と同じ計算。表の 1 行要約と裏面の図表が同じ数字を指すよう、
+      // 1 枚につきここで 1 回だけ計算する（実測 0.15ms/件）。
+      report: deriveGeneticReportOf(sp.genotype, sp.seed),
       rank,
       design,
       finish: resolveFinish(choice, rank.def.id),

@@ -40,6 +40,66 @@ const CY = S / 2;
 
 const n = (v: number): string => (Math.round(v * 100) / 100).toString();
 
+/**
+ * 「押されかた」の揺らぎ。
+ *
+ * 【なぜ要るか（§9）】
+ *   同じ場所・同じ角度・同じ濃さで出ると、**印刷済みの UI** に見える。
+ *   認証印は「あとから人が 1 枚ずつ押したもの」でなければならないので、
+ *   位置・角度・大きさ・濃さを個体ごとにずらす。
+ *
+ * 【決定論（AGENTS.md §1）】
+ *   すべて `new Rng(seed)` の名前付きサブストリーム。`Math.random()` は使わない。
+ *   同じ個体のカードは、何度描き直しても寸分違わず同じ押されかたになる。
+ *   ストリーム名を変えると押されかたが総入れ替えになるので、名前は変えない。
+ */
+export interface SealStamp {
+  /** 回転（度）。 */
+  rotate: number;
+  /** 右端からの位置（カード幅に対する %）。 */
+  x: number;
+  /** 上からの位置（カード高さに対する %）。 */
+  y: number;
+  /** 拡大率。 */
+  scale: number;
+  /** 濃さ。インクだけ差が大きい（箔は圧着差の程度に留める）。 */
+  opacity: number;
+  /** 押しムラの種（feTurbulence の seed）。 */
+  inkSeed: number;
+  /** 押しムラの強さ 0..1。0 なら均一。 */
+  inkFade: number;
+}
+
+/**
+ * 個体ごとの押されかたを決める。
+ *
+ * 【振れ幅は実物を見て決めた】
+ *   回転を ±20° まで振ると「貼り間違えた」に見え、±4° では揃って見える。
+ *   位置も同様で、大きく散らすと版面が崩れ、小さいと印刷に見える。
+ *   ここの数値を変えたら、必ず 20 個体を並べて目で確かめること（§20）。
+ */
+export function sealStamp(seed: string, material: SealMaterial): SealStamp {
+  const root = new Rng(`${seed}#seal:stamp`);
+  const foil = isFoil(material);
+  return {
+    rotate: root.stream('rot').float(-12, 10),
+    // 右端から。カードの縁を割らない範囲で振る。
+    x: root.stream('x').float(2.5, 9),
+    // 【下限は脚（フレーバー）に掛からない高さで止める】
+    //   印の高さはカード高さの 24.3%（幅 34% の正方形）。
+    //   上端 70% だと下端が 94% になり、**2 行になったフレーバーに重なって
+    //   文が読めなくなった**（実測。medium の比較帯で発生）。
+    //   脚は 92% から始まるので、上端は 65% までに留める。
+    //   絵の下端〜情報欄にはこの範囲でも十分にまたがる。
+    y: root.stream('y').float(54, 65),
+    scale: root.stream('scale').float(0.94, 1.06),
+    // 箔は圧着差の程度（§10）。インクは押し圧の差が大きい。
+    opacity: foil ? root.stream('op').float(0.94, 1) : root.stream('op').float(0.8, 1),
+    inkSeed: root.stream('ink').int(1, 9999),
+    inkFade: foil ? root.stream('fade').float(0.12, 0.28) : root.stream('fade').float(0.3, 0.72),
+  };
+}
+
 export interface SealOptions {
   material: SealMaterial;
   /** 証明書番号（下弧に刷る・地紋の seed）。 */
@@ -55,6 +115,11 @@ export interface SealOptions {
   security: number;
   /** 小さく描くとき（比較・一覧）に、潰れる要素を省く。 */
   compact?: boolean;
+  /**
+   * 押しムラ（§10）。`sealStamp()` の inkSeed / inkFade を渡す。
+   * 省略すると均一な印になる（比較・一覧では計算を省くため既定は無し）。
+   */
+  ink?: { seed: number; fade: number };
 }
 
 /** 箔（面で光る）系か、インク（線だけ）系か。 */
@@ -127,6 +192,35 @@ function helixBand(y: number, width: number, turns: number): string {
   );
 }
 
+/**
+ * 押しムラ（§10）。
+ *
+ * 【外部画像を使わずに作る】
+ *   `feTurbulence` の雑音をアルファへ写して、ところどころインクが乗り切って
+ *   いない状態を作る。`seed` 属性があるので **完全に決定論** で、
+ *   同じ個体なら毎回同じムラになる。
+ *
+ * 【やりすぎない】
+ *   濃さを削りすぎると「汚い印」「読めない印」になる。
+ *   `k` を負・`b` を 1 より少し上に置いて、**大半は不透明のまま、
+ *   一部だけ薄くなる** 側へ寄せてある。箔（`strength` が小さい）は
+ *   ほとんど均一で、圧着のムラ程度にしか出ない。
+ */
+function inkFilter(id: string, seed: number, strength: number): string {
+  // strength 0..1 → 削る量。0.72（インクの上限）でも下地が透ける程度に留める。
+  const k = -(0.5 + strength * 1.5);
+  const b = 1 + (0.5 + strength * 1.5) * 0.62;
+  return (
+    `<filter id="${id}" x="-6%" y="-6%" width="112%" height="112%">` +
+    `<feTurbulence type="fractalNoise" baseFrequency="0.055" numOctaves="4" ` +
+    `seed="${seed}" result="n"/>` +
+    `<feColorMatrix in="n" type="matrix" result="a" values="` +
+    `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${n(k)} ${n(b)}"/>` +
+    `<feComposite in="SourceGraphic" in2="a" operator="in"/>` +
+    `</filter>`
+  );
+}
+
 /** 内リングに沿った微細目盛り。長短の並びが証明書番号で変わる。 */
 function registrationTicks(rng: Rng, radius: number, count: number): string {
   const out: string[] = [];
@@ -187,6 +281,12 @@ export function sealSvg(opts: SealOptions): string {
 
   const parts: string[] = [];
 
+  // 押しムラは意匠全体に掛ける。文字だけ均一に残すと、
+  // 「かすれた枠に印刷された文字」という別物に見える。
+  const inkId = `sealInk-${uid}`;
+  const useInk = Boolean(opts.ink && opts.ink.fade > 0);
+  if (useInk) parts.push(`<defs>${inkFilter(inkId, opts.ink!.seed, opts.ink!.fade)}</defs>`);
+
   // ── 箔の地（medallion）──
   //   インク系は「紙に押した」なので地を持たない。箔系は面そのものが箔なので、
   //   円盤を敷いてから意匠を抜く。ここが素材の違いをいちばん強く語る。
@@ -202,11 +302,16 @@ export function sealSvg(opts: SealOptions): string {
 
   // ── 地紋（RARE 以上）──
   if (security > 0 && !compact) {
-    const g = `<g class="gmc-seal-guilloche" opacity="${n(0.34 + security * 0.3)}">`;
+    // 【花弁は細かく・彫りは浅く】
+    //   初版は花弁 7〜11・深さ 0.9〜1.2 で、印を大きくしたら
+    //   放射状の線が目立って **クモの巣** に見えた（実物で確認）。
+    //   紙幣の地紋がそうであるように、細かく浅くすると
+    //   「精密に彫った下地」に見える。
+    const g = `<g class="gmc-seal-guilloche" opacity="${n(0.26 + security * 0.24)}">`;
     const layers = security >= 0.9 ? 3 : security >= 0.6 ? 2 : 1;
     const rings: string[] = [];
     for (let i = 0; i < layers; i++) {
-      rings.push(guilloche(rng, 44 - i * 6, 7 + i * 2 + rng.int(0, 2), 0.9 + i * 0.16));
+      rings.push(guilloche(rng, 45 - i * 5.5, 15 + i * 4 + rng.int(0, 3), 0.5 + i * 0.1));
     }
     parts.push(g + rings.join('') + `</g>`);
   }
@@ -252,9 +357,13 @@ export function sealSvg(opts: SealOptions): string {
     parts.push(`<text class="gmc-seal-date" x="${CX}" y="88" text-anchor="middle">${certifiedOn}</text>`);
   }
 
+  // defs は filter の外に出しておく（自分自身を掛けない）。
+  const defs = useInk ? parts.shift()! : '';
+  const body = useInk ? `<g filter="url(#${inkId})">${parts.join('')}</g>` : parts.join('');
+
   return (
     `<svg viewBox="0 0 ${S} ${S}" class="gmc-seal-svg" role="img" ` +
-    `aria-label="鑑定機関の認証印 ${certId}">${parts.join('')}</svg>`
+    `aria-label="鑑定機関の認証印 ${certId}">${defs}${body}</svg>`
   );
 }
 
@@ -265,11 +374,18 @@ export function sealSvg(opts: SealOptions): string {
  * 艶の層は CSS 側（`.gmc-seal-shine`）がポインタ位置に反応して動かす。
  * インク系ではこの層を作らない（紙に押したインクは光らない）。
  */
-export function sealBlock(opts: SealOptions & { className?: string }): string {
+export function sealBlock(opts: SealOptions & { className?: string; stamp?: SealStamp }): string {
   const shine = isFoil(opts.material) ? `<span class="gmc-seal-shine" aria-hidden="true"></span>` : '';
+  // 押されかたは CSS 変数で渡す。CSS 側が位置と回転を組み立てるので、
+  // 版面（どこを基準に置くか）は cardStyles.ts の責務のまま保てる。
+  const st = opts.stamp;
+  const style = st
+    ? ` style="--seal-rot:${n(st.rotate)}deg;--seal-x:${n(st.x)}%;--seal-y:${n(st.y)}%;` +
+      `--seal-scale:${n(st.scale)};--seal-op:${n(st.opacity)}"`
+    : '';
   return (
     `<div class="gmc-seal gmc-seal--${opts.material} ${opts.className ?? ''}" ` +
-    `data-seal="${opts.material}">` +
+    `data-seal="${opts.material}"${style}>` +
     sealSvg(opts) +
     shine +
     `</div>`

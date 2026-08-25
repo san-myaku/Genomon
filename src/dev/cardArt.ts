@@ -165,7 +165,14 @@ function collectorMask(): string {
  *   箔は color-dodge で乗る。暗いカードの上では **アルファ 10% でも
  *   十分に明るく焼き付く**ので、個体のいる楕円は中心付近をほぼ 0 にする。
  */
-function collectorV2Mask(rank: CardRankDef): string {
+export interface SealSpot {
+  /** 630x880 の作画座標系での中心と半径。 */
+  cx: number;
+  cy: number;
+  r: number;
+}
+
+function collectorV2Mask(rank: CardRankDef, seal: SealSpot): string {
   const parts: string[] = [];
 
   if (hasZone(rank, 'background')) {
@@ -205,18 +212,25 @@ function collectorV2Mask(rank: CardRankDef): string {
   }
 
   if (hasZone(rank, 'logo')) {
-    // 上部レールのロゴと、右側の格の記号。
-    parts.push(`<rect x="34" y="30" width="216" height="28" rx="4" fill="#fff" opacity="0.9"/>`);
-    parts.push(`<rect x="430" y="29" width="166" height="30" rx="4" fill="#fff" opacity="0.85"/>`);
+    // 上部レールの GENOMON ロゴ。
+    parts.push(`<rect x="34" y="36" width="216" height="26" rx="4" fill="#fff" opacity="0.9"/>`);
   }
 
   if (hasZone(rank, 'rank')) {
-    // 段の帯（ランク名＋点数）。ここが光るかどうかが、いちばん目に付く差。
-    parts.push(`<rect x="35" y="694" width="431" height="37" rx="6" fill="#fff" opacity="0.9"/>`);
+    // 【格のかたまり（右上）】
+    //   以前は絵の下の横帯だった。希少度を右上へ統合したので、
+    //   箔の当たる場所もそこへ移す。座標は実測値
+    //   （x 74.4% / y 3.7% / w 20% / h 5.3%）を 630x880 へ写したもの。
+    parts.push(`<rect x="466" y="31" width="128" height="49" rx="6" fill="#fff" opacity="0.92"/>`);
   }
 
   if (hasZone(rank, 'seal')) {
-    parts.push(`<circle cx="536" cy="677" r="66" fill="#fff" opacity="0.88"/>`);
+    // 【印は個体ごとに動くので、マスクも追随させる】
+    //   固定の円にすると、押された場所と光る場所がずれる。
+    //   呼び出し側が sealStamp から実際の中心を渡す。
+    parts.push(
+      `<circle cx="${n(seal.cx)}" cy="${n(seal.cy)}" r="${n(seal.r)}" fill="#fff" opacity="0.88"/>`,
+    );
   }
 
   // どこも光らない段（STANDARD）は、完全に透明なマスクを返す。
@@ -224,9 +238,14 @@ function collectorV2Mask(rank: CardRankDef): string {
   return wrap(parts.join(''));
 }
 
+/** 印を置かないときの既定位置（比較・一覧などで stamp を渡さない場合）。 */
+const DEFAULT_SEAL_SPOT: SealSpot = { cx: 486, cy: 690, r: 107 };
+
 /** デザインごとの foil マスク（data URI）。 */
-export function foilMaskUri(design: CardDesign, rank?: CardRankDef): string {
-  if (design === 'collectorV2') return dataUri(collectorV2Mask(rank ?? FALLBACK_RANK));
+export function foilMaskUri(design: CardDesign, rank?: CardRankDef, seal?: SealSpot): string {
+  if (design === 'collectorV2') {
+    return dataUri(collectorV2Mask(rank ?? FALLBACK_RANK, seal ?? DEFAULT_SEAL_SPOT));
+  }
   const svg =
     design === 'certified' ? certifiedMask() : design === 'natural' ? naturalMask() : collectorMask();
   return dataUri(svg);
@@ -247,9 +266,10 @@ export function artHoleMaskUri(design: CardDesign): string {
         ? { x: 41, y: 140, w: 547, h: 282, r: 8 }
         : design === 'collectorV2'
           // v2 は絵が縦の 7 割を占める。全部を抜くと地紋が消えてしまうので、
-          // **個体の体が来る中央の塊だけ** を抜き、縁と情報欄の裏には残す
-          // （実測: 絵は 6.4〜78.1%、体はその内側の 10〜70% に収まる）。
-          ? { x: 76, y: 88, w: 478, h: 528, r: 26 }
+          // **個体の体が来る中央の塊だけ** を抜き、縁と情報欄の裏には残す。
+          // 実測: 格を右上へ移して絵は 9.7〜81.3% になったので、
+          // 体が収まる 14〜74% を抜く（版面を動かしたら測り直すこと）。
+          ? { x: 76, y: 123, w: 478, h: 528, r: 26 }
           : { x: 31, y: 64, w: 567, h: 622, r: 22 };
   return dataUri(
     wrap(

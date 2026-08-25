@@ -594,15 +594,16 @@ export const CARD_CSS = `
    Collector v2 ── 表（見るカード）
    ══════════════════════════════════════════════════════════
    【版面の縦の取りかた】
-     レール 4% / 絵 62% / 情報 24% / 脚（フレーバー）10%
-   文字情報を増やしても、絵は縦の 6 割を保つ（主役はゲノモン・§5）。
+     レール（ロゴ＋格）→ 絵 → 情報 → 脚（フレーバー）
+   文字情報を増やしても、絵は縦の 6 割以上を保つ（主役はゲノモン）。
    絵は flex:1 1 auto なので、情報欄の行数が増えたぶんだけ絵が痩せる。
-   欄を足すときは必ず 430px で実物を見て、絵が潰れていないか確かめること。 */
+   欄を足すときは必ず 430px で実物を見て、絵が潰れていないか確かめること。
 
-/* 【左寄せを明示する — ライブラリが text-align:center を掛けている】
-   .holo-card 側の中央寄せがそのまま降りてきて、名前とフレーバーだけが
-   中央に寄っていた（flex の行は左に出るので、混在して余計に目立つ）。
-   版面の基準は左なので、body でいったん左へ戻す。 */
+   【視覚の強さの順（§13）】
+     ゲノモン → 個体名 → 格 → 認証印 → grade/gen/code → 特徴 →
+     遺伝の 1 行要約 → フレーバー
+   この順に font-size と明度を落としてある。 */
+
 .gmc-card--collectorV2 .gmc-body{padding:5.2% 5.6% 4.6%;text-align:left}
 .gmc-card .gmc-b-body{text-align:left}
 
@@ -618,13 +619,11 @@ export const CARD_CSS = `
   background:radial-gradient(44% 27% at 50% 33%,
     color-mix(in srgb, var(--gmc-glow) 38%, transparent), transparent 72%);
   mix-blend-mode:screen;opacity:calc(.42 * var(--gmc-backdrop-amount,1))}
-/* 情報欄の下半分だけ地を沈める。v2 は情報が多いぶん、旧 Collector より
-   幕の立ち上がりを上（44%）にしてある。 */
+/* 情報欄の下半分だけ地を沈める。 */
 .gmc-card--collectorV2 .gmc-k-scrim{position:absolute;inset:0;
   background:linear-gradient(180deg, transparent 44%, rgba(4,3,8,.66) 66%, rgba(4,3,8,.93) 84%)}
 /* 絵は「窓いっぱい」より少し大きく出す。描画 SVG 自身が余白を持っているので、
-   等倍だと窓の中で一回り小さく見える（絵の上下に 10% ずつ空いていた）。
-   窓は overflow:visible なので、はみ出しても切れない。 */
+   等倍だと窓の中で一回り小さく見える。窓は overflow:visible なので切れない。 */
 .gmc-card--collectorV2 .gmc-art-inner{
   transform:translate3d(calc(var(--pointer-dx,0) * 3px), calc(var(--pointer-dy,0) * 3px), 0) scale(1.08);
   filter:drop-shadow(0 .32em .5em rgba(0,0,0,.5))}
@@ -641,57 +640,54 @@ export const CARD_CSS = `
 .gmc-card[data-rank="mythic"] .gmc-v-edge{border-width:.12em;border-color:rgba(226,214,255,.72);
   box-shadow:inset 0 0 0 .05em rgba(190,160,255,.25), inset 0 0 1.1em -.3em rgba(190,160,255,.4)}
 
-/* ── 上のレール ── */
-.gmc-card--collectorV2 .gmc-v-rail{display:flex;align-items:center;justify-content:space-between;
-  gap:.6em;padding-bottom:.3em;min-width:0}
-.gmc-card--collectorV2 .gmc-wordmark{font-size:.76em;letter-spacing:.42em;color:var(--gmc-ink)}
-.gmc-card .gmc-v-pips{flex:0 0 auto;display:flex;gap:.18em;font-size:.66em;line-height:1}
-.gmc-card .gmc-v-pips i{font-style:normal;color:var(--gmc-metal-dim);opacity:.45}
-.gmc-card .gmc-v-pips i.on{color:var(--gmc-metal);opacity:1;
-  text-shadow:0 0 .35em color-mix(in srgb, var(--gmc-accent) 55%, transparent)}
-.gmc-card[data-rank="mythic"] .gmc-v-pips i.on{color:#fff;
-  text-shadow:0 0 .5em rgba(220,190,255,.9), 0 0 .9em rgba(140,200,255,.5)}
+/* ── 上のレール：左にロゴ、右が「格を読む場所」（§11）── */
+.gmc-card--collectorV2 .gmc-v-rail{display:flex;align-items:flex-start;
+  justify-content:space-between;gap:.6em;padding-bottom:.3em;min-width:0}
+.gmc-card--collectorV2 .gmc-wordmark{font-size:.76em;letter-spacing:.42em;color:var(--gmc-ink);
+  padding-top:.34em}
 
-/* ── 情報欄 ── */
-/* 【右 23% を認証印のために空けておく】
-   最初は印をカード全体に対する % で置いていたが、絵は flex:1 1 auto で
-   伸びるので情報欄の位置が個体ごとに動き、**印が段の帯に重なって
-   点数を隠した**（実測: 印 67.7〜83.3% / 帯 79.2〜83.4%）。
-   位置を推測せず、情報欄そのものに右の柱を予約する。 */
-.gmc-card--collectorV2 .gmc-v-info{position:relative;flex:0 0 auto;display:flex;
-  flex-direction:column;gap:.3em;padding-top:.35em;padding-right:23%}
+/* ══ 格のかたまり（右上に統合）══
+   以前は記号だけを右上に置き、名前と点数は絵の下の横帯に出していた。
+   同じ希少度が 2 か所に散っていて、どちらを読めばよいのか分からなかった。
+   名前・点数・記号をひとつの塊にして、**段の素材はこの塊が背負う**。 */
+.gmc-card .gmc-v-rank{flex:0 0 auto;min-width:0;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;align-items:flex-end;gap:.12em;
+  padding:.3em .52em .34em;border-radius:.26em}
+.gmc-card .gmc-v-rankname{font-size:.7em;font-weight:900;letter-spacing:.2em;line-height:1;
+  white-space:nowrap}
+/* EXCEPTIONAL は 11 文字あり、そのままだとカード幅の 4 割を食う。 */
+.gmc-card[data-rank="exceptional"] .gmc-v-rankname{font-size:.58em;letter-spacing:.12em}
+.gmc-card .gmc-v-rankline{display:flex;align-items:center;gap:.5em}
+.gmc-card .gmc-v-score{font-family:var(--gmc-mono);font-size:.98em;font-weight:800;
+  letter-spacing:.01em;line-height:1}
+.gmc-card .gmc-v-pips{flex:0 0 auto;display:flex;gap:.14em;font-size:.5em;line-height:1}
+.gmc-card .gmc-v-pips i{font-style:normal;opacity:.4}
+.gmc-card .gmc-v-pips i.on{opacity:1}
 
-/* 段の帯。ここだけで「一瞬で格が分かる」ことを担保する（§6）。 */
-.gmc-card .gmc-v-band{display:flex;align-items:baseline;justify-content:space-between;gap:.6em;
-  padding:.3em .6em;border-radius:.26em;min-width:0;position:relative;overflow:hidden}
-.gmc-card .gmc-v-rankname{font-size:1.12em;font-weight:900;letter-spacing:.18em;line-height:1.05;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.gmc-card[data-rank="exceptional"] .gmc-v-rankname{font-size:.9em;letter-spacing:.1em}
-.gmc-card .gmc-v-score{flex:0 0 auto;font-family:var(--gmc-mono);font-size:1.02em;font-weight:800;
-  letter-spacing:.02em;line-height:1}
-
-/* 段ごとの素材。文字色だけを変えるのではなく、帯そのものの材質を変える（§7）。 */
-.gmc-card .gmc-v-band--flat{background:rgba(255,255,255,.04);
+/* 段ごとの素材。文字色だけを変えるのではなく、塊そのものの材質を変える。 */
+.gmc-card .gmc-v-rank--flat{background:rgba(255,255,255,.04);
   border:.06em solid rgba(255,255,255,.085);color:var(--gmc-ink-soft)}
-.gmc-card .gmc-v-band--shine{color:var(--gmc-ink);border:.06em solid var(--gmc-rule);
+.gmc-card .gmc-v-rank--shine{color:var(--gmc-ink);border:.06em solid var(--gmc-rule);
   background:linear-gradient(100deg, rgba(255,255,255,.17), rgba(255,255,255,.03) 62%)}
-.gmc-card .gmc-v-band--metal{color:#191c24;
+.gmc-card .gmc-v-rank--metal{color:#191c24;
   background:linear-gradient(100deg,#8d95a5 0%,#e9edf4 21%,#a9b1bf 46%,#f3f6fb 63%,#97a0b0 100%)}
-.gmc-card .gmc-v-band--metalGlow{color:#2b1f06;
+.gmc-card .gmc-v-rank--metalGlow{color:#2b1f06;
   background:linear-gradient(100deg,#8a6a22 0%,#f1d78b 20%,#caa54f 45%,#fff1c0 63%,#aa8330 100%);
   box-shadow:0 0 .8em -.2em rgba(240,214,138,.45)}
-.gmc-card .gmc-v-band--spectral{color:#1a1426;
+.gmc-card .gmc-v-rank--spectral{color:#1a1426;
   background:linear-gradient(100deg,#ffd7e3 0%,#ffeab4 22%,#c6ffe1 44%,#bfe5ff 66%,#e3cdff 88%,#ffd7e3 100%);
   box-shadow:0 0 1em -.2em rgba(200,170,255,.55)}
-/* 金属・分光の帯には、ポインタに合わせて動く艶を重ねる。 */
-.gmc-card .gmc-v-band--metal::after,
-.gmc-card .gmc-v-band--metalGlow::after,
-.gmc-card .gmc-v-band--spectral::after{content:"";position:absolute;inset:0;pointer-events:none;
+/* 金属・分光にはポインタに合わせて動く艶を重ねる。 */
+.gmc-card .gmc-v-rank--metal::after,
+.gmc-card .gmc-v-rank--metalGlow::after,
+.gmc-card .gmc-v-rank--spectral::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(calc(var(--pointer-dx,0) * 30deg + 105deg),
     rgba(255,255,255,.66) 0%, rgba(255,255,255,0) 34%, rgba(0,0,0,.22) 60%, rgba(255,255,255,.5) 100%);
   mix-blend-mode:overlay;opacity:.8}
 
-/* 名前・特徴・メタは、右下の認証印を避けて組む。 */
+/* ── 情報欄 ── */
+.gmc-card--collectorV2 .gmc-v-info{position:relative;flex:0 0 auto;display:flex;
+  flex-direction:column;gap:.26em;padding-top:.35em}
 .gmc-card .gmc-v-name{font-family:var(--gmc-sans);font-size:1.42em;font-weight:800;letter-spacing:.08em;
   line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gmc-ink)}
 .gmc-card .gmc-v-name em{font-style:normal;font-size:.42em;font-weight:600;letter-spacing:.2em;
@@ -701,36 +697,56 @@ export const CARD_CSS = `
 .gmc-card .gmc-v-traits span{position:relative;white-space:nowrap}
 .gmc-card .gmc-v-traits span+span::before{content:"·";margin-right:.5em;color:var(--gmc-ink-soft)}
 .gmc-card .gmc-v-traits--none{color:var(--gmc-ink-soft)}
-.gmc-card .gmc-v-meta{display:flex;flex-wrap:wrap;gap:.2em .95em;font-size:.54em;line-height:1.4;
+
+/* 遺伝の 1 行要約。鑑定済みのカードなので接合状態の「数」は出してよいが、
+   座の一覧は表に出さない（それは裏面の仕事）。 */
+.gmc-card .gmc-v-gene{display:flex;flex-wrap:wrap;gap:.1em .7em;font-size:.46em;line-height:1.5;
+  color:var(--gmc-ink-soft);letter-spacing:.06em}
+.gmc-card .gmc-v-gene b{font-weight:700;letter-spacing:.16em;margin-right:.34em;opacity:.72}
+.gmc-card .gmc-v-gene span{font-family:var(--gmc-mono)}
+
+.gmc-card .gmc-v-meta{display:flex;flex-wrap:wrap;gap:.2em .85em;font-size:.54em;line-height:1.4;
   color:var(--gmc-ink)}
 .gmc-card .gmc-v-meta b{font-weight:700;letter-spacing:.2em;color:var(--gmc-ink-soft);margin-right:.45em}
+.gmc-card .gmc-v-house{font-family:var(--gmc-serif);letter-spacing:.1em}
 
-/* ── 認証印の置き場所（§8）──
-   右下・少し斜め・ゲノモンの顔には重ねない。顔は絵の上半分にあるので、
-   絵の下端と情報欄の境目にまたがる高さへ置く。 */
-.gmc-card--collectorV2 .gmc-v-seal{position:absolute;right:0;top:-3.6em;width:21%;
-  transform:rotate(-7deg);transform-origin:50% 50%}
+/* ══ 認証印の置き場所（§8・§9・§16）══
+   カード全面を基準に置き、traits や meta に **少し重ねる**。
+   きれいに柱へ収めると「レイアウトされた UI」に見えるので、
+   あとから人が押したように見える範囲でわざと重ねる。
+   位置・角度・大きさ・濃さは個体ごとに変わる（cardSeal.ts の sealStamp）。 */
+.gmc-card--collectorV2 .gmc-v-seal{position:absolute;inset:0;pointer-events:none;z-index:3}
+.gmc-card--collectorV2 .gmc-v-seal .gmc-seal{position:absolute;
+  right:var(--seal-x,6%);top:var(--seal-y,64%);width:34%;
+  transform:rotate(var(--seal-rot,-7deg)) scale(var(--seal-scale,1));
+  transform-origin:50% 50%;opacity:var(--seal-op,1)}
+
+/* ══ フレーバー（v2）══
+   §14: いまより目立たなくする。ただし「読めない」にはしない。
+   相対寸法だけで詰めると、スマホ（カード実寸 258〜331px）で 5px 台へ落ちる。
+   px の下限を持たせて 8px を切らないようにし、代わりに不透明度と
+   斜体で「静かに置いてある」側へ寄せる。枠も引用符も付けない（§15）。 */
+.gmc-card--collectorV2 .gmc-flavor{gap:.08em}
+.gmc-card--collectorV2 .gmc-flavor b{font-size:max(6.5px,.36em);letter-spacing:.22em;
+  color:var(--gmc-metal-dim);opacity:.62;font-weight:700}
+.gmc-card--collectorV2 .gmc-flavor span{font-size:max(8px,.58em);line-height:1.45;
+  font-style:italic;color:var(--gmc-ink-soft);opacity:.72;-webkit-line-clamp:2}
 
 /* ── 脚（フレーバーと証明書番号）── */
 .gmc-card--collectorV2 .gmc-v-foot{margin-top:auto;display:flex;align-items:flex-end;gap:.7em;
   padding-top:.5em;min-width:0}
 .gmc-card--collectorV2 .gmc-flavor{flex:1 1 auto;min-width:0;margin:0}
-.gmc-card--collectorV2 .gmc-flavor b{font-size:.42em;letter-spacing:.2em;color:var(--gmc-metal-dim)}
-/* 【小さくしすぎない — 実測で下限を割った】
-   .62em は 430px のカードで 8.1px（カード幅比 0.0189）。
-   e2e が持っている可読性の下限 0.021 を割っていた。目立たせないことと
-   読めないことは違う。大きさは name の 1/2 に留めつつ、下限は守る。 */
-.gmc-card--collectorV2 .gmc-flavor span{font-size:.72em;line-height:1.45;color:var(--gmc-ink-soft);
-  -webkit-line-clamp:2}
-.gmc-card .gmc-v-cert{flex:0 0 auto;font-family:var(--gmc-mono);font-size:.44em;letter-spacing:.08em;
-  color:var(--gmc-ink-soft);opacity:.75;white-space:nowrap}
+.gmc-card .gmc-v-cert{flex:0 0 auto;font-family:var(--gmc-mono);font-size:.42em;letter-spacing:.08em;
+  color:var(--gmc-ink-soft);opacity:.7;white-space:nowrap;text-align:right;line-height:1.4}
+.gmc-card .gmc-v-cert i{display:block;font-style:normal;opacity:.8}
 
 /* ══════════════════════════════════════════════════════════
    認証印
    ══════════════════════════════════════════════════════════
    【素材の進化がそのまま格（§8）】
      ink → inkFoil → silver → gold → holo
-   インク系は紙に押した線だけ。箔系は円盤そのものが箔で、意匠を抜く。
+   インク系は円盤を持たず線だけ（紙に押した印）。箔系は円盤そのものが箔で、
+   意匠を抜く（箔押しのメダル）。
 
    【暗い地の上で読めること】
      本来の証券インクは深い臙脂だが、ほぼ黒のカードの上では何も見えない。
@@ -751,7 +767,7 @@ export const CARD_CSS = `
   --seal-disc:#e2c073;--seal-disc-edge:#a8823a;
   filter:drop-shadow(0 .06em .16em rgba(0,0,0,.55))}
 .gmc-card .gmc-seal--holo{--seal-ink:#20173a;--seal-ring:#3d3168;--seal-line:#4b3d7d;
-  --seal-disc:#d3d9ff;--seal-disc-edge:#9a8fd0;
+  --seal-disc:#8f93c4;--seal-disc-edge:#9a8fd0;
   filter:drop-shadow(0 .06em .18em rgba(0,0,0,.6))}
 
 .gmc-card .gmc-seal-arc{fill:var(--seal-ink);font-family:var(--gmc-sans);font-weight:800}
@@ -770,36 +786,43 @@ export const CARD_CSS = `
     rgba(255,255,255,.9) 0%, rgba(255,255,255,0) 32%, rgba(0,0,0,.42) 58%, rgba(255,255,255,.75) 100%)}
 /* 【color-dodge だと白く飛んで銀に見えた】
    明るい円盤の上に color-dodge を掛けると、どの色相も 255 に張り付いて
-   **ただの銀の印**になった（実測で段の差が出なくなっていた）。
-   円盤の地を落として、色を足す側（hard-light）で重ねる。 */
-.gmc-card .gmc-seal--holo{--seal-disc:#8f93c4}
+   ただの銀の印になった。円盤の地を落として、色を足す側（hard-light）で重ねる。
+   なお SVG を z-index で上げてはいけない ── 円盤は SVG の中に描いてあるので、
+   艶が円盤の裏へ回って分光がまったく見えなくなる。 */
 .gmc-card .gmc-seal--holo .gmc-seal-shine{mix-blend-mode:hard-light;opacity:.92;
   background:conic-gradient(from calc(var(--pointer-dx,0) * 80deg + 20deg),
     #ff5f96, #ffc24a, #55f0b4, #46b6ff, #b46cff, #ff5f96)}
-/* 【z-index で SVG を上げてはいけない】
-   円盤は SVG の中に描いてある。SVG を上へ出すと艶が円盤の **裏** へ回り、
-   分光がまったく見えず銀の印に見えた。艶は SVG の後ろの兄弟のまま、
-   inset+border-radius で円盤の内側だけに収める。 */
 
 /* ══════════════════════════════════════════════════════════
    裏（読むカード）
    ══════════════════════════════════════════════════════════
-   【全面を明るくしない（§12）】
-     紙は表と同じ黒のまま。その上に **書類だけ** を羊皮紙の面として置く。
-     全面を羊皮紙にすると、めくった瞬間に別のカードに見える。 */
-/* 【裏は表と別の文字寸法で組む】
-   表は絵が主役なので 3.05cqw で足りるが、裏は読む面。同じ寸法だと
-   430px のカードで本文 7.3px になり、書類の下 4 割が空いたまま
-   「小さくて読めないのにスカスカ」という最悪の版面になっていた。
-   文字を上げると余白も埋まる（実測して 3.75cqw に決めた）。 */
-/* 【cqw だけで組むとスマホで読めなくなる — 実測 6.8px / 320px では 5.6px】
-   表は絵が主役なので相対寸法でよいが、裏は読む面。スマホではカードの
-   実寸が 258〜331px しかないため、cqw に比例させると本文が 6px 台に落ちる。
-   **px の下限**を入れて、どの幅でも本文 9px を割らないようにする。
-   はみ出すぶんは書類の中だけをスクロールさせる（§23 が明示的に許している）。 */
+   【明るい紙を貼らない — ここは一度やり直した】
+     初版は「黒い紙の上に明るい羊皮紙の書類」で組んだ。コントラストが
+     強すぎて **別の紙を貼り付けたように見え**、めくった瞬間に別のカードに
+     なっていた。書類そのものもカードと同じ暗い世界の素材で作り、
+     明るい象牙色は **文字と細い罫だけ** に使う。
+
+   【文字寸法は px の下限を持つ】
+     表は絵が主役なので相対寸法でよいが、裏は読む面。スマホでは
+     カードの実寸が 258〜331px しかないため、cqw に比例させると本文が
+     6px 台に落ちる。max() で下限を入れる。 */
 .gmc-card .gmc--back{font-size:max(16px, 3.75cqw);
-  --doc:#e9dfc6;--doc2:#ded2b4;--doc-ink:#2a2419;--doc-soft:#6e6350;
-  --doc-metal:#8a6a2a}
+  /* 深い青緑寄りの炭。カードの黒と地続きに見える範囲で、紙として読める明度。 */
+  --doc:#151d1f;
+  --doc2:#0d1416;
+  --doc-ink:#dce3df;
+  --doc-soft:#8d9c97;
+  --doc-metal:#b08d4e;
+  --doc-line:rgba(220,227,223,.14)}
+
+/* 段ごとの罫の材質（§4）。表ほど派手にはしない ── 資料としての
+   読みやすさが最優先なので、変えるのは罫と小さな見出しの色だけ。 */
+.gmc-card[data-rank="standard"] .gmc--back{--doc-metal:#8b9a95}
+.gmc-card[data-rank="notable"] .gmc--back{--doc-metal:#a3b0aa}
+.gmc-card[data-rank="rare"] .gmc--back{--doc-metal:#bcc6d2}
+.gmc-card[data-rank="exceptional"] .gmc--back{--doc-metal:#d9b76c}
+.gmc-card[data-rank="mythic"] .gmc--back{--doc-metal:#cfc2ff}
+
 .gmc-card .gmc-b-body{padding:4.6% 5%}
 .gmc-card .gmc-b-head{display:flex;align-items:center;justify-content:space-between;gap:.6em;
   min-width:0;padding-bottom:.24em}
@@ -807,25 +830,30 @@ export const CARD_CSS = `
 .gmc-card .gmc-b-office .gmc-wordmark{font-size:.76em;letter-spacing:.34em;color:var(--gmc-ink)}
 .gmc-card .gmc-b-office span{font-size:.44em;letter-spacing:.24em;color:var(--gmc-ink-soft);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* metal-dim（#6d5f95）はほぼ黒の地に沈んで読めなかった。 */
 .gmc-card .gmc-b-title{font-family:var(--gmc-serif);font-size:.6em;letter-spacing:.28em;
-  color:var(--gmc-metal);opacity:.82;padding-bottom:.5em}
+  color:var(--doc-metal);opacity:.9;padding-bottom:.5em}
 
-/* 書類そのもの。 */
-/* 【書類は伸ばさず、中身の高さで置く】
-   flex:1 1 auto で下端まで引き伸ばしていたので、記録の少ない個体だと
-   紙の下 4 割が空白のまま残り「小さいのにスカスカ」に見えた。
-   中身の高さで止めて、余白は書類の **外**（署名欄までの間）へ逃がす。
-   実際の証書もそう組まれている。 */
+/* 書類そのもの。中身の高さで止めて、余白は書類の外（署名欄までの間）へ逃がす。
+   下端まで引き伸ばすと、記録の少ない個体で紙の下 4 割が空白のまま残る。 */
 .gmc-card .gmc-b-doc{position:relative;flex:0 1 auto;min-height:0;display:flex;flex-direction:column;
-  gap:.5em;padding:.7em .75em .6em;border-radius:.3em;color:var(--doc-ink);
+  gap:.44em;padding:.7em .75em .6em;border-radius:.3em;color:var(--doc-ink);
   background:linear-gradient(168deg, var(--doc), var(--doc2));
-  box-shadow:0 .1em .5em rgba(0,0,0,.5), inset 0 0 0 .05em rgba(0,0,0,.14)}
+  box-shadow:0 .1em .5em rgba(0,0,0,.45), inset 0 0 0 .05em rgba(255,255,255,.05),
+    inset 0 0 0 .12em rgba(0,0,0,.25)}
+/* 紙の繊維。暗い地なので multiply ではなく screen で「薄く浮かせる」。 */
 .gmc-card .gmc-b-doc::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background-image:var(--gmc-grain);background-size:100% 100%;opacity:.16;mix-blend-mode:multiply}
+  border-radius:.3em;
+  background-image:var(--gmc-grain);background-size:100% 100%;opacity:.07;mix-blend-mode:screen}
+/* MYTHIC だけ、書類の上辺に細い分光の線が走る（§4 の「subtle prism security line」）。
+   面ではなく 1 本の線に留めることで、資料の読みやすさを壊さない。 */
+.gmc-card[data-rank="mythic"] .gmc-b-doc::before{content:"";position:absolute;
+  left:.6em;right:.6em;top:0;height:.09em;border-radius:99em;pointer-events:none;
+  background:linear-gradient(90deg,#ff8fb0,#ffd88a,#8ff0c6,#8ecbff,#c9a3ff,#ff8fb0);
+  opacity:.65}
+
 .gmc-card .gmc-b-sec{min-width:0}
 .gmc-card .gmc-b-sec h4{margin:0 0 .16em;font-size:.44em;letter-spacing:.24em;font-weight:800;
-  color:var(--doc-metal);padding-bottom:.14em;border-bottom:.07em solid rgba(0,0,0,.2)}
+  color:var(--doc-metal);padding-bottom:.14em;border-bottom:.07em solid var(--doc-line)}
 .gmc-card .gmc-b-row{display:flex;align-items:baseline;gap:.6em;min-width:0;line-height:1.42}
 .gmc-card .gmc-b-row b{flex:0 0 27%;font-size:.44em;letter-spacing:.14em;font-weight:700;
   color:var(--doc-soft)}
@@ -833,51 +861,123 @@ export const CARD_CSS = `
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gmc-card .gmc-b-row span i{font-style:normal;font-family:var(--gmc-mono);font-size:.86em;
   color:var(--doc-soft);margin-left:.7em}
-.gmc-card .gmc-b-row.on span{color:#7a4a12;font-weight:800}
+.gmc-card .gmc-b-row.on span{color:var(--doc-metal);font-weight:800}
 .gmc-card .gmc-b-none{margin:0;font-size:.5em;letter-spacing:.14em;color:var(--doc-soft);opacity:.85}
 
 .gmc-card .gmc-b-rank{display:flex;align-items:baseline;gap:.6em;min-width:0}
-.gmc-card .gmc-b-rank b{font-size:.86em;font-weight:900;letter-spacing:.14em;color:#5d3a0c}
+.gmc-card .gmc-b-rank b{font-size:.86em;font-weight:900;letter-spacing:.14em;color:var(--doc-metal)}
 .gmc-card .gmc-b-rank-score{font-family:var(--gmc-mono);font-size:.8em;font-weight:800}
-.gmc-card .gmc-b-rank-pips{flex:1 1 auto;text-align:right;font-size:.56em;color:var(--doc-metal)}
-.gmc-card .gmc-b-reasons{margin:.1em 0 0;padding-left:.9em;font-size:.5em;line-height:1.5;
+.gmc-card .gmc-b-rank-pips{flex:1 1 auto;display:flex;justify-content:flex-end;gap:.14em;
+  font-size:.56em;color:var(--doc-metal)}
+.gmc-card .gmc-b-rank-pips i{font-style:normal;opacity:.35}
+.gmc-card .gmc-b-rank-pips i.on{opacity:1}
+.gmc-card .gmc-b-reasons{margin:.14em 0 0;padding-left:.9em;font-size:.5em;line-height:1.5;
   color:var(--doc-soft)}
 .gmc-card .gmc-b-reasons li{margin:0}
 
-.gmc-card .gmc-b-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.14em .5em}
-.gmc-card .gmc-b-stats>div{min-width:0;display:flex;flex-direction:column}
-.gmc-card .gmc-b-stats b{font-size:.38em;letter-spacing:.14em;color:var(--doc-soft);
+/* ══ 図表 ══
+   museum label / 標本カード / 証券を目指す。ダッシュボードにしない。
+   線は細く、面で塗らず、色だけで意味を伝えない（必ず数字を添える）。
+
+   【幅を inline style で渡している理由】
+     ライブラリ CSS の .holo-card__content *{width:auto} は class の指定を
+     上書きするが、**inline style には勝てない**（QR で rect の width 属性 が
+     消えたのは属性であって inline style ではなかった）。
+     データで決まる長さは inline style で渡すのが唯一安全な経路。 */
+.gmc-card .gmc-g-bar{display:flex;height:.44em;border-radius:.08em;overflow:hidden;
+  background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 .05em rgba(0,0,0,.35)}
+.gmc-card .gmc-g-bar i{display:block;height:100%}
+.gmc-card .gmc-g-homo{background:var(--doc-metal);opacity:.8}
+.gmc-card .gmc-g-het{background:var(--doc-ink);opacity:.3}
+.gmc-card .gmc-g-legend{display:flex;flex-wrap:wrap;gap:.06em .7em;margin-top:.2em;
+  font-size:.44em;letter-spacing:.06em;color:var(--doc-soft);font-family:var(--gmc-mono)}
+.gmc-card .gmc-g-legend b{font-family:var(--gmc-sans);font-weight:700;letter-spacing:.14em;
+  margin-right:.32em;opacity:.8}
+/* 帯と凡例の対応は、色だけでなく先頭の小さな四角でも示す。 */
+.gmc-card .gmc-g-k-homo b::before,
+.gmc-card .gmc-g-k-het b::before{content:"";display:inline-block;width:.5em;height:.5em;
+  margin-right:.34em;vertical-align:baseline;border-radius:.06em}
+.gmc-card .gmc-g-k-homo b::before{background:var(--doc-metal);opacity:.8}
+.gmc-card .gmc-g-k-het b::before{background:var(--doc-ink);opacity:.3}
+
+/* ゲージは針が両端に来ても切れないよう、左右に余白を確保してから引く。 */
+.gmc-card .gmc-g-gaugewrap{padding:0 .22em}
+.gmc-card .gmc-g-gauge-top{display:flex;align-items:baseline;justify-content:space-between;
+  font-size:.4em;letter-spacing:.16em;color:var(--doc-soft)}
+.gmc-card .gmc-g-gauge-top b{font-family:var(--gmc-mono);font-size:1.25em;font-weight:800;
+  color:var(--doc-metal);letter-spacing:.02em}
+.gmc-card .gmc-g-scale{position:relative;height:.85em;font-size:.38em;letter-spacing:.14em;
+  color:var(--doc-soft)}
+.gmc-card .gmc-g-scale i{position:absolute;top:0;font-style:normal;white-space:nowrap}
+.gmc-card .gmc-g-scale i:first-child{transform:translateX(-50%)}
+.gmc-card .gmc-g-scale i:last-child{transform:translateX(-100%)}
+.gmc-card .gmc-g-gauge{position:relative;height:.8em;margin:.16em 0 .02em}
+.gmc-card .gmc-g-track{position:absolute;left:0;right:0;top:50%;height:.07em;
+  background:var(--doc-line);transform:translateY(-50%)}
+.gmc-card .gmc-g-tick{position:absolute;top:50%;width:.06em;height:.4em;
+  background:var(--doc-ink);opacity:.28;transform:translate(-50%,-50%)}
+.gmc-card .gmc-g-pin{position:absolute;top:50%;width:.28em;height:.28em;border-radius:50%;
+  background:var(--doc-metal);box-shadow:0 0 0 .07em rgba(0,0,0,.45);
+  transform:translate(-50%,-50%)}
+
+.gmc-card .gmc-g-traits{display:grid;grid-template-columns:1fr 1fr;gap:.08em .8em}
+.gmc-card .gmc-g-trait{display:flex;align-items:center;gap:.4em;min-width:0}
+.gmc-card .gmc-g-trait b{flex:0 0 40%;font-size:.4em;letter-spacing:.1em;font-weight:700;
+  color:var(--doc-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmc-card .gmc-g-tbar{flex:1 1 auto;position:relative;height:.26em;
+  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 .04em rgba(0,0,0,.3)}
+.gmc-card .gmc-g-tbar span{position:absolute;left:0;top:0;bottom:0;
+  background:var(--doc-metal);opacity:.7}
+.gmc-card .gmc-g-trait em{flex:0 0 auto;font-style:normal;font-family:var(--gmc-mono);
+  font-size:.42em;color:var(--doc-ink);opacity:.85}
+
+.gmc-card .gmc-g-ped{display:flex;align-items:center;gap:.5em;min-width:0}
+.gmc-card .gmc-g-ped-parents{flex:1 1 42%;min-width:0;display:flex;flex-direction:column;gap:.08em}
+.gmc-card .gmc-g-parent{display:flex;align-items:baseline;gap:.4em;min-width:0}
+.gmc-card .gmc-g-parent b{flex:0 0 auto;font-size:.4em;letter-spacing:.14em;color:var(--doc-soft)}
+.gmc-card .gmc-g-parent span{flex:1 1 auto;min-width:0;font-size:.52em;font-weight:600;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gmc-card .gmc-b-stats span{font-family:var(--gmc-mono);font-size:.6em;font-weight:800}
-.gmc-card .gmc-b-stats span i{font-style:normal;font-family:var(--gmc-sans);font-size:.6em;
-  font-weight:600;color:var(--doc-soft);margin:0 .35em 0 .16em}
+.gmc-card .gmc-g-parent span i{font-style:normal;font-family:var(--gmc-mono);font-size:.82em;
+  color:var(--doc-soft);margin-left:.5em}
+.gmc-card .gmc-g-ped-brace{flex:0 0 auto;width:1.3em;height:1.9em;color:var(--doc-metal);opacity:.75}
+.gmc-card .gmc-g-ped-self{flex:1 1 42%;min-width:0;display:flex;align-items:baseline;gap:.45em}
+.gmc-card .gmc-g-ped-self b{font-size:.62em;font-weight:800;letter-spacing:.06em;
+  color:var(--doc-metal);white-space:nowrap}
+.gmc-card .gmc-g-ped-self span{font-size:.5em;color:var(--doc-soft);min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.gmc-card .gmc-b-substats{display:flex;flex-wrap:wrap;gap:.06em .8em;margin-top:.18em;
+  font-size:.42em;letter-spacing:.06em;color:var(--doc-soft);font-family:var(--gmc-mono)}
+.gmc-card .gmc-b-substats b{font-family:var(--gmc-sans);font-weight:700;letter-spacing:.14em;
+  margin-right:.32em;opacity:.8}
 
 .gmc-card .gmc-b-genes{width:100%;border-collapse:collapse;table-layout:fixed}
 .gmc-card .gmc-b-genes th,
-.gmc-card .gmc-b-genes td{text-align:left;padding:.06em 0;font-size:.5em;line-height:1.4;
+.gmc-card .gmc-b-genes td{text-align:left;padding:.05em 0;font-size:.5em;line-height:1.38;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gmc-card .gmc-b-genes th{width:22%;font-weight:700;color:var(--doc-soft)}
 .gmc-card .gmc-b-genes td{width:34%;font-weight:600}
 .gmc-card .gmc-b-genes td.z{width:14%;font-family:var(--gmc-mono);font-size:.44em;
   letter-spacing:.06em;color:var(--doc-metal);font-weight:800}
-.gmc-card .gmc-b-genes td.e{width:30%;color:#5d3a0c;font-weight:700}
+.gmc-card .gmc-b-genes td.e{width:30%;color:var(--doc-metal);font-weight:700;opacity:.92}
 
-.gmc-card .gmc-b-cols{display:grid;grid-template-columns:1fr 1fr;gap:.5em .8em}
+.gmc-card .gmc-b-cols{display:grid;grid-template-columns:1fr 1fr;gap:.44em .8em}
 .gmc-card .gmc-b-sec--half{min-width:0}
 .gmc-card .gmc-b-sec--half .gmc-b-row b{flex:0 0 42%}
 
 .gmc-card .gmc-b-foot{flex:0 0 auto;margin-top:auto;display:flex;align-items:center;gap:.6em;
   padding-top:.7em;min-width:0}
 .gmc-card .gmc-b-qr{flex:0 0 auto;width:3.1em;height:3.1em;border-radius:.16em;overflow:hidden;
-  box-shadow:0 0 0 .07em rgba(255,255,255,.16)}
+  box-shadow:0 0 0 .07em rgba(255,255,255,.12)}
 .gmc-card .gmc-b-qr svg{display:block;width:100%;height:100%}
 .gmc-card .gmc-b-fulltext{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:.1em}
 .gmc-card .gmc-b-fulltext b{font-size:.44em;letter-spacing:.2em;color:var(--gmc-ink)}
 .gmc-card .gmc-b-fulltext span{font-family:var(--gmc-mono);font-size:.42em;letter-spacing:.04em;
   color:var(--gmc-ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gmc-card .gmc-b-fulltext i{font-style:normal;font-size:.38em;letter-spacing:.16em;
-  color:var(--gmc-metal);opacity:.6}
-.gmc-card .gmc-b-seal{flex:0 0 auto;width:3.4em;height:3.4em;transform:rotate(-6deg)}
+  color:var(--doc-metal);opacity:.6}
+/* 裏の印は「正式な証明書の印」。表より大きく、傾きは控えめに（§17）。 */
+.gmc-card .gmc-b-seal{flex:0 0 auto;width:5em;height:5em;transform:rotate(-4deg)}
 
 /* ══════════════════════════════════════════════════════════
    裏返し（§11）
@@ -907,12 +1007,13 @@ export const CARD_CSS = `
 .gmc-flip[data-face="front"] .gmc-flip-face--back{pointer-events:none}
 
 /* ══ 比較・一覧では潰れる要素を間引く ══ */
-.gmc-q-lite .gmc-v-seal,
+/* 【印は一覧にも出す】
+   印が大きくなり、150px のカードでも 50px 前後になった。段が一覧でも
+   一目で読めるうえ、「押されかたが個体ごとに違う」ことの確認（§20）が
+   一覧でできるようになる。地紋と押しムラは compact 側で省いてある。 */
 .gmc-q-lite .gmc-v-cert,
+.gmc-q-lite .gmc-v-gene,
 .gmc-q-lite .gmc-v-meta b{display:none}
-.gmc-q-lite .gmc-v-name,
-.gmc-q-lite .gmc-v-traits,
-.gmc-q-lite .gmc-v-meta{padding-right:0}
 .gmc-q-lite .gmc-v-traits{max-height:1.5em}
 .gmc-q-medium .gmc-v-traits{max-height:1.5em}
 .gmc-q-medium .gmc-seal-date{display:none}
@@ -931,6 +1032,10 @@ export const CARD_CSS = `
     -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 1.2em),transparent);
     mask-image:linear-gradient(180deg,#000 calc(100% - 1.2em),transparent)}
   .gmc-card .gmc-b-cols{grid-template-columns:1fr}
+  /* 2 列だと 375px で TRANSLUCENCY が三点リーダに切れる（実測）。
+     裏面はもともと縦にスクロールする作りなので、1 列にして読ませる。 */
+  .gmc-card .gmc-g-traits{grid-template-columns:1fr}
+  .gmc-card .gmc-g-trait b{flex:0 0 34%}
   /* 258px 幅のカードで 4 列は成立しない。 */
   .gmc-card .gmc-b-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   /* 見出しと欄名も、本文と同じだけ持ち上げる（.44em では 7px を割る）。 */
