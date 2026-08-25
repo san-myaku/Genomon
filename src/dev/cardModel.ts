@@ -4,7 +4,7 @@
  * 【この層に DOM を持ち込まない】
  *   ここは純粋関数だけで構成する。ブラウザが無くても動くので、
  *   `tests/cards.test.ts` から直接呼んで決定論性を検証できる。
- *   DOM 組み立ては cardDesign.ts、画面は cardLab.ts の責務。
+ *   DOM 組み立ては cardDesign.ts / cardBack.ts、画面は cardLab.ts の責務。
  *
  * 【決定論（AGENTS.md §1）】
  *   `Math.random()` は使わない。カードに出る値はすべて
@@ -13,26 +13,45 @@
  *   同じ個体の Prism カードはいつ開いても同じ粒子配置になる。
  *   ストリーム名を変えるとその項目だけが変わるので、既存の名前は変えないこと。
  *
- * 【ダミー値について】
- *   親・展示実績・通し番号・鑑定日は、まだゲーム本体に無い情報。
- *   「カードにその情報が載ったらどう見えるか」を評価するための仮の値で、
- *   本編とは一切つながっていない。Phenotype から取れる値
- *   （模様・配色・希少度・保因形質）は必ず実データを使う。
+ * ─────────────────────────────────────────────────────────
+ * 【本物と作りものを型で分ける（§15）】
+ *
+ *   CardFacts       … Phenotype / Genotype から出る **本物**
+ *                     （模様・配色・希少度・発現した形質・フレーバー）
+ *   LabCardHistory  … まだ本編に無い情報の **仮の値**（cardHistory.ts）
+ *                     （親・子・展示成績・鑑定日・発行番号）
+ *
+ *   以前は 1 つの型に混ぜていたので、本番へ移すときにどれが嘘なのか
+ *   分からなくなる状態だった。混ぜないこと。
+ * ─────────────────────────────────────────────────────────
  */
 
 import type { CatLocus, Phenotype, RarityTier } from '../core/types.ts';
-import { Rng, hashString } from '../core/rng.ts';
+import { hashString } from '../core/rng.ts';
 import { PALETTE_BY_ID } from '../core/color.ts';
 import { deriveFlavorText, type FlavorText } from '../game/flavor.ts';
-import { alleleDef, alleleLabel } from '../genetics/loci.ts';
+import { CAT_LOCI, alleleDef, alleleLabel } from '../genetics/loci.ts';
 import { makeName } from '../genetics/naming.ts';
+// 型式番号の語幹は cardHistory.ts と同じ表を使う
+// （親と本個体で語彙が違うと、同じ登録簿に見えない）。
+import { CODE_STEMS as CODE_STEM_LIST } from './cardHistory.ts';
+import { CARD_RANK_BY_ID, type CardRank } from './cardRarity.ts';
+
+export { toRoman } from './cardHistory.ts';
 
 // ─────────────────────────────────────────────────────────
 //  カードの種類
 // ─────────────────────────────────────────────────────────
 
-/** 3 つのデザイン方向。 */
-export type CardDesign = 'certified' | 'natural' | 'collector';
+/**
+ * 版面。
+ *
+ * 【既存 3 案を消していない理由（§17）】
+ *   Certified / Natural History / 旧 Collector は比較研究の対照として残す。
+ *   「なぜ Collector v2 がいいのか」は、並べて初めて言葉にできる。
+ *   旧 Collector は `legacy` として畳んであるが、コードは無傷。
+ */
+export type CardDesign = 'collectorV2' | 'certified' | 'natural' | 'collector';
 
 export interface CardDesignDef {
   id: CardDesign;
@@ -42,32 +61,48 @@ export interface CardDesignDef {
   subtitle: string;
   /** 一言でどんな方向か。 */
   note: string;
+  /** 比較研究用に残しているだけの旧案か。 */
+  legacy: boolean;
 }
 
+/** 並び順がそのまま UI と Design 比較の並び。先頭が既定。 */
 export const CARD_DESIGNS: readonly CardDesignDef[] = [
+  {
+    id: 'collectorV2',
+    label: 'Collector v2',
+    subtitle: 'CERTIFIED COLLECTOR SERIES',
+    note: '黒の Collector に、格・認証印・少しの文字情報を足した本命。表＝見るカード／裏＝読むカード。',
+    legacy: false,
+  },
   {
     id: 'certified',
     label: 'Certified',
     subtitle: 'CERTIFIED SPECIMEN',
     note: '鑑定証・グレーディングカード。整ったグリッドと大きな Grade。箔は控えめ。',
+    legacy: false,
   },
   {
     id: 'natural',
     label: 'Natural History',
     subtitle: 'LIVING SPECIMEN RECORD',
     note: '自然史標本・血統証明書。情報量は 3 案でいちばん多い。箔は罫線と紋章だけ。',
+    legacy: false,
   },
   {
     id: 'collector',
-    label: 'Collector',
+    label: 'Legacy Collector',
     subtitle: 'COLLECTOR SERIES',
-    note: '集めたくなる chase card。文字は最小限、ゲノモンを最大化。箔を強めてよい唯一の案。',
+    note: '第 1 世代の Collector。文字は最小限で格の表現が無い。v2 との比較用に残してある。',
+    legacy: true,
   },
 ];
 
 export const CARD_DESIGN_BY_ID: Readonly<Record<CardDesign, CardDesignDef>> = Object.fromEntries(
   CARD_DESIGNS.map((d) => [d.id, d]),
 ) as Record<CardDesign, CardDesignDef>;
+
+/** 既定の版面。**Collector v2**（§4）。 */
+export const DEFAULT_DESIGN: CardDesign = 'collectorV2';
 
 /**
  * 仕上げ（foil）。`effect` は `@kongyo2/cards-css` の `HoloEffect` に対応する。
@@ -79,12 +114,15 @@ export type CardFinish =
   | 'standard' | 'silver' | 'holo' | 'prism' | 'gold' | 'aurora' | 'crystal' | 'cosmos'
   | 'reverse' | 'glitter' | 'rainbow' | 'radiant' | 'oilslick' | 'sunburst' | 'mosaic';
 
+/** 操作パネルで選べる値。'auto' は「段が決める」。 */
+export type CardFinishChoice = CardFinish | 'auto';
+
 export interface CardFinishDef {
   id: CardFinish;
   label: string;
   /** ライブラリの effect 名。 */
   effect: string;
-  /** カード表面に刷る呼び名（Collector の上部レール）。 */
+  /** カード表面に刷る呼び名。 */
   stamp: string;
   /**
    * 箔の強さの基準（0..1）。デザイン側の控えめ係数と掛け合わせて使う。
@@ -117,6 +155,11 @@ export const CARD_FINISH_BY_ID: Readonly<Record<CardFinish, CardFinishDef>> = Ob
   CARD_FINISHES.map((f) => [f.id, f]),
 ) as Record<CardFinish, CardFinishDef>;
 
+/** 'auto' なら段の既定の仕上げを使う。 */
+export function resolveFinish(choice: CardFinishChoice, rank: CardRank): CardFinish {
+  return choice === 'auto' ? CARD_RANK_BY_ID[rank].finish : choice;
+}
+
 /** 手動で切り替えるグレード。ゲーム内の鑑定ロジックとは連動しない。 */
 export type CardGrade = 6 | 7 | 8 | 9 | 10;
 
@@ -134,20 +177,8 @@ const GRADE_WORD: Readonly<Record<CardGrade, string>> = {
 export type CardQuality = 'full' | 'medium' | 'lite';
 
 // ─────────────────────────────────────────────────────────
-//  ラテン語彙（カードに刷る英字）
+//  語彙
 // ─────────────────────────────────────────────────────────
-
-/**
- * 個体コード名の語幹。
- * ゲノモンのカタカナ名（naming.ts）とは別に、カード上の「型式番号」として使う。
- * 実在の商標・作品名を連想させない、鉱物・天体・植物の語をもとにした造語で揃える。
- */
-const CODE_STEMS: readonly string[] = [
-  'NOVA', 'LUNE', 'AURI', 'MOSS', 'VESP', 'IRIS', 'CIRR', 'FERN', 'ONYX', 'OPAL',
-  'HALO', 'VIRE', 'LUMA', 'NIMB', 'CALX', 'SILV', 'AMBR', 'TERR', 'GLAU', 'ZEPH',
-  'ORYX', 'SOLE', 'MICA', 'PYRE', 'CERU', 'THAL', 'VELU', 'ARBO', 'CRIN', 'NACR',
-  'RIME', 'SORA', 'TIDE', 'VEIL', 'DUNE', 'ECHO', 'FLUX', 'GEOD', 'HELI', 'INDI',
-];
 
 /** 配色ファミリー → 血統（house）名。カード上の LINEAGE 欄。 */
 const LINEAGE_BY_PALETTE: Readonly<Record<string, string>> = {
@@ -164,15 +195,6 @@ const LINEAGE_BY_PALETTE: Readonly<Record<string, string>> = {
   ash: 'CINEREA',
 };
 
-const SHOW_EVENTS: readonly string[] = [
-  'VERDANT SHOW', 'PALE MOON EXPO', 'STRATA CUP', 'AURORA CLASSIC',
-  'HOLLOW FAIR', 'TIDEPOOL INVITATIONAL', 'EMBER TRIALS', 'GLASS GARDEN CUP',
-];
-
-const SHOW_PLACES: readonly string[] = [
-  '1st Place', '2nd Place', '3rd Place', 'Best in Show', 'Judges Choice', 'Finalist',
-];
-
 const RARITY_TIER_LABEL: Readonly<Record<RarityTier, string>> = {
   common: 'COMMON',
   uncommon: 'UNCOMMON',
@@ -180,37 +202,8 @@ const RARITY_TIER_LABEL: Readonly<Record<RarityTier, string>> = {
   precious: 'PRECIOUS',
 };
 
-/** 通し番号の母数。珍しい個体ほど発行枚数が少ない設定にしてある。 */
-const PRINT_TOTAL: Readonly<Record<RarityTier, number>> = {
-  common: 999,
-  uncommon: 555,
-  rare: 222,
-  precious: 111,
-};
-
-const ROMAN_UNITS: readonly (readonly [number, string])[] = [
-  [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
-];
-
-/** 小さな数をローマ数字にする（世代表記用）。 */
-export function toRoman(n: number): string {
-  let rest = Math.max(1, Math.floor(n));
-  let out = '';
-  while (rest >= 10) {
-    out += 'X';
-    rest -= 10;
-  }
-  for (const pair of ROMAN_UNITS) {
-    while (rest >= pair[0]) {
-      out += pair[1];
-      rest -= pair[0];
-    }
-  }
-  return out;
-}
-
 // ─────────────────────────────────────────────────────────
-//  カードの事実
+//  カードの事実（すべて実データ）
 // ─────────────────────────────────────────────────────────
 
 export interface CardTraitLine {
@@ -221,12 +214,6 @@ export interface CardTraitLine {
   /** 値の日本語表記。 */
   valueJa: string;
   notable: boolean;
-}
-
-export interface CardShowRecord {
-  event: string;
-  place: string;
-  year: number;
 }
 
 export interface CardFacts {
@@ -247,24 +234,28 @@ export interface CardFacts {
   rarityLabel: string;
   /** 希少と判定した理由（実データ）。 */
   rarityReasons: readonly string[];
-  generation: number;
-  generationRoman: string;
+  /** 配色から決まる血統名（実データ）。 */
   lineage: string;
-  parents: readonly [string, string];
-  showRecord: CardShowRecord | null;
-  print: { index: number; total: number; text: string };
   /** 主要形質（実データ）。 */
   lines: readonly CardTraitLine[];
-  /** 珍しい形質の日本語（実データ）。 */
+  /**
+   * 表面に出す「目を引く特徴」。
+   *
+   * 【`traits` ではなく `parts`（実際に描かれた対立遺伝子）から作る】
+   *   遺伝的に発現していても素体の都合で描かれない形質がある
+   *   （スライムの羽、耳の無い個体の耳先色）。`traits` の notable を並べると
+   *   **カードに描かれていないものを「見えている特徴」として刷ってしまう**。
+   *   AGENTS.md §2.9 / §2.10 と同じ判断。
+   */
+  headlineTraits: readonly string[];
+  /** 珍しい形質の日本語（実データ・旧デザイン用）。 */
   notableTraits: readonly string[];
-  /** 保因している形質（実データ）。最大 3 件。 */
+  /** 保因している形質（実データ）。最大 3 件。裏面と旧デザインでだけ使う。 */
   carriers: readonly string[];
   /** 素体の日本語。 */
   baseLabel: string;
   /** 配色ファミリーの日本語。 */
   paletteLabel: string;
-  /** 鑑定日（ダミー・決定論）。 */
-  certifiedOn: string;
   /** QR プレースホルダに書く将来の URL。 */
   qrPayload: string;
   /**
@@ -307,6 +298,28 @@ function isNotable(pheno: Phenotype, locus: CatLocus, alleleId: string): boolean
 }
 
 /**
+ * 「実際に描かれていて、かつ珍しい」形質を、表に出す順に並べる。
+ * `parts` に無い座（素体・配色・目の数）はそのまま姿に出ているので
+ * `traits` 側から拾う（`game/grading.ts` の `observedSignal` と同じ判断）。
+ */
+function headlineTraitsOf(pheno: Phenotype): string[] {
+  const parts = pheno.parts as unknown as Record<string, unknown>;
+  const out: string[] = [];
+  for (const def of CAT_LOCI) {
+    const drawn = parts[def.locus];
+    if (typeof drawn === 'string') {
+      if (drawn !== 'none' && alleleDef(def.locus, drawn)?.notable) {
+        out.push(`${def.label}：${alleleLabel(def.locus, drawn)}`);
+      }
+      continue;
+    }
+    const hit = pheno.traits.find((t) => t.locus === def.locus);
+    if (hit?.notable) out.push(`${hit.label}：${hit.value}`);
+  }
+  return out;
+}
+
+/**
  * 個体からカードの事実一式を作る。
  *
  * `grade` だけは外から渡す（Cards Lab では人が手で切り替えるため）。
@@ -314,43 +327,13 @@ function isNotable(pheno: Phenotype, locus: CatLocus, alleleId: string): boolean
  */
 export function deriveCardFacts(pheno: Phenotype, grade: CardGrade): CardFacts {
   const seed = pheno.seed;
-  const root = new Rng(seed);
 
-  const codeRng = root.stream('card:code');
-  const code = `${codeRng.pick(CODE_STEMS)}-${String(codeRng.int(1, 99)).padStart(2, '0')}`;
-
+  // 型式番号は「その個体のもの」なので、経歴（Lab のダミー）ではなく
+  // ここで作る。seed のハッシュから直接引くので Rng の消費順に依存しない。
+  const stemIndex = hashString(`${seed}#card:code:stem`);
+  const stems = CODE_STEM_LIST;
+  const code = `${stems[stemIndex % stems.length]}-${String((hashString(`${seed}#card:code:no`) % 99) + 1).padStart(2, '0')}`;
   const certId = `GM-${String(hashString(`${seed}#card:cert`) % 100_000_000).padStart(8, '0')}`;
-
-  const genRng = root.stream('card:generation');
-  const generation = genRng.pickWeighted(
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 12],
-    [8, 12, 15, 16, 14, 12, 9, 7, 4, 3],
-  );
-
-  const parentRng = root.stream('card:parents');
-  const parentCode = (): string =>
-    `${parentRng.pick(CODE_STEMS)}-${String(parentRng.int(1, 99)).padStart(2, '0')}`;
-  const parents: readonly [string, string] = [parentCode(), parentCode()];
-
-  const showRng = root.stream('card:show');
-  const showRecord: CardShowRecord | null = showRng.bool(0.62)
-    ? {
-        event: showRng.pick(SHOW_EVENTS),
-        place: showRng.pick(SHOW_PLACES),
-        year: showRng.int(2024, 2026),
-      }
-    : null;
-
-  const tier = pheno.rarity.tier;
-  const total = PRINT_TOTAL[tier];
-  const printRng = root.stream('card:print');
-  const index = printRng.int(1, total);
-  const pad = String(total).length;
-
-  const dateRng = root.stream('card:date');
-  const year = dateRng.int(2024, 2026);
-  const month = dateRng.int(1, 12);
-  const day = dateRng.int(1, 28);
 
   const p = pheno.parts;
   const family = PALETTE_BY_ID[pheno.palette.family];
@@ -361,13 +344,6 @@ export function deriveCardFacts(pheno: Phenotype, grade: CardGrade): CardFacts {
     { key: 'LUMIN', value: latin(p.lumin), valueJa: jaOf(pheno, 'lumin', p.lumin), notable: isNotable(pheno, 'lumin', p.lumin) },
   ];
 
-  const notableTraits = pheno.traits.filter((t) => t.notable).map((t) => `${t.label}：${t.value}`);
-
-  const carriers = pheno.traits
-    .filter((t) => t.carrier)
-    .slice(0, 3)
-    .map((t) => `${t.label}：${t.carrier ?? ''}`);
-
   return {
     seed,
     name: makeName(seed),
@@ -377,21 +353,19 @@ export function deriveCardFacts(pheno: Phenotype, grade: CardGrade): CardFacts {
     grade,
     gradeWord: GRADE_WORD[grade],
     rarityScore: pheno.rarity.score,
-    rarityTier: tier,
-    rarityLabel: RARITY_TIER_LABEL[tier],
+    rarityTier: pheno.rarity.tier,
+    rarityLabel: RARITY_TIER_LABEL[pheno.rarity.tier],
     rarityReasons: pheno.rarity.reasons,
-    generation,
-    generationRoman: toRoman(generation),
     lineage: LINEAGE_BY_PALETTE[pheno.palette.family] ?? 'IGNOTA',
-    parents,
-    showRecord,
-    print: { index, total, text: `${String(index).padStart(pad, '0')}/${total}` },
     lines,
-    notableTraits,
-    carriers,
+    headlineTraits: headlineTraitsOf(pheno),
+    notableTraits: pheno.traits.filter((t) => t.notable).map((t) => `${t.label}：${t.value}`),
+    carriers: pheno.traits
+      .filter((t) => t.carrier)
+      .slice(0, 3)
+      .map((t) => `${t.label}：${t.carrier ?? ''}`),
     baseLabel: pheno.baseLabel,
     paletteLabel: family?.label ?? pheno.palette.family,
-    certifiedOn: `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`,
     qrPayload: `genomon.app/g/${certId}`,
     flavor: deriveFlavorText(pheno),
   };

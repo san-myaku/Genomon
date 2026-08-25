@@ -293,6 +293,73 @@ t=312秒 操作258回  子が孵化・親子4体が共存
 
 E2E ヘルパには、リードが実機検証中に踏んだ落とし穴の回避策を入れてある。**アプリは離脱時に自分の状態を保存するため、`localStorage.clear()` → reload では初期化されない。** アプリを持たないページ（`sheet.html`）へ移動してから消す必要がある。
 
+
+### 2026-08-23 の実行（Cards Lab 第 2 世代 / D-042）
+
+```
+npx tsc --noEmit    → エラー 0
+npx vitest run      → Test Files 19 passed (19) / Tests 306 passed (306)
+npx playwright test → 82 passed / 8 skipped / 0 failed（6.2 分）
+npx vite build      → ✓ built（80 modules）
+                      dist/index.html               0.52 kB │ gzip:   0.38 kB
+                      dist/assets/index-*.css      65.99 kB │ gzip:  13.40 kB
+                      dist/assets/index-*.js      459.64 kB │ gzip: 159.42 kB
+```
+
+`dist/` の中身は `index.html` と `assets/` だけ。`holo-card` / `gmc-card` /
+`cardRarity` / `APPRAISAL OFFICE` のいずれも成果物に出ないことを grep で確認済み
+（Cards Lab は開発サーバ専用のまま）。
+
+**本番バンドルの増分（master `d4bdf9b` との比較・同じ環境で連続実行）**
+
+| | master | この branch | 差分 |
+|---|---|---|---|
+| JS | 433.31 kB（gzip 150.53） | 459.64 kB（gzip 159.42） | **+26.33 kB（gzip +8.89 kB）** |
+| CSS | 65.99 kB（gzip 13.40） | 65.99 kB（gzip 13.40） | ±0 |
+
+増分はすべて `src/game/flavor.ts` の文章（本編の観察ノートと共有）。
+CSS が増えていないことが、Cards Lab の CSS が本番へ混ざっていない裏づけになる。
+
+#### 既存 flaky（`e2e/05-field.spec.ts`）について
+
+前回のフルスイートでは `[pc] 3体が同じフィールドで観察でき、配置モードへ入れる`
+が 1 件落ちた。**この branch の変更が原因ではないことを master で確認した**:
+
+```
+git switch master           # d4bdf9b（Cards Lab v2 の変更を一切含まない）
+npx playwright test e2e/05-field.spec.ts
+  → 1 failed / 1 passed
+     Test timeout of 90000ms exceeded.
+     <ellipse ...> from <button ... aria-label="シトコを なでる"> subtree
+     intercepts pointer events
+```
+
+原因も記録どおりで、**徘徊している別個体の影の楕円がクリック対象を覆う**もの。
+最終確認のフルスイート（この branch）では 82 passed / 0 failed で、この件も通った。
+実行ごとに出たり出なかったりする既存の不安定さであり、Cards Lab の失敗を
+これで流したものは 1 件も無い。
+
+#### フレーバーの分布（1000 個体・`npx vite-node tools/cardStats.ts`）
+
+| | 変更前 | 変更後 |
+|---|---|---|
+| ユニーク文数 | 約 150 | **706** |
+| 最頻の 1 文 | 3.2% | **0.90%** |
+| 上位 10 文の占有率 | — | **6.7%** |
+| 半数を占める文の数 | 29 種類 | **206 種類** |
+| 1 回だけ出た文 | — | **550 種類** |
+| 平均の長さ | — | 31.7 文字（最長 48） |
+
+見出しの分布: FIELD NOTE 40.7% / ARCHIVE 17.1% / KEEPER NOTE 13.9% /
+BREEDER NOTE 12.6% / OLD SAYING 9.9% / LINEAGE NOTE 5.8%。
+
+#### 段（rarity）の出現率（同 1000 個体・ランダム個体群）
+
+STANDARD 59.3% / NOTABLE 32.0% / RARE 6.5% / EXCEPTIONAL 2.0% / **MYTHIC 0.2%**
+
+交配で希少度を狙う実プレイでは、この分布より上へ寄るはず（ここはランダムな
+Genotype での測定値）。
+
 ## 未実施のテスト（正直な申告）
 
 - **展示会・ショップ・交配の E2E** — 成体化まで実時間で数分かかるため E2E には含めていない。仮想時間の `tests/progression.test.ts` が担当

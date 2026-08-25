@@ -7,6 +7,7 @@ import {
   canAppraise,
   deriveFlavorText,
   deriveGeneticReport,
+  deriveGeneticReportOf,
   isAppraised,
   newGame,
   observedRarity,
@@ -157,9 +158,9 @@ describe('鑑定前の観察とフレーバー', () => {
    *   集めて眺めるゲームでは、すぐ「また同じ文」に気づく。
    *   種類の数ではなく **偏り** を見る。
    */
-  it('600 個体で、同じ文に偏らない', () => {
+  it('1000 個体で、同じ文に偏らない', () => {
     const counts = new Map<string, number>();
-    const N = 600;
+    const N = 1000;
     for (let i = 0; i < N; i++) {
       const q = phenotypeOf(randomGenotype(`flavor-dist-${i}`), 'adult');
       const t = deriveFlavorText(q).text;
@@ -167,10 +168,10 @@ describe('鑑定前の観察とフレーバー', () => {
     }
     const sorted = [...counts.values()].sort((a, b) => b - a);
 
-    // 種類そのもの
-    expect(counts.size, '文の種類が少なすぎる').toBeGreaterThanOrEqual(90);
-    // 最頻の 1 文が全体を占めていないこと
-    expect(sorted[0]! / N, '同じ文が出すぎる').toBeLessThan(0.06);
+    // 種類そのもの（実測 706。組み立て（観察＋続きの一言）を外すと 150 前後まで落ちる）
+    expect(counts.size, '文の種類が少なすぎる').toBeGreaterThanOrEqual(400);
+    // 最頻の 1 文が全体を占めていないこと（実測 0.9%）
+    expect(sorted[0]! / N, '同じ文が出すぎる').toBeLessThan(0.02);
     // 半数の個体が、ごく少数の文に集中していないこと
     let acc = 0;
     let half = 0;
@@ -179,7 +180,21 @@ describe('鑑定前の観察とフレーバー', () => {
       half++;
       if (acc >= N / 2) break;
     }
-    expect(half, '半数の個体が少数の文に集中している').toBeGreaterThanOrEqual(20);
+    expect(half, '半数の個体が少数の文に集中している').toBeGreaterThanOrEqual(90);
+  });
+
+  /**
+   * 【Cards Lab の裏面が本編と同じ計算を通っていること】
+   *   裏面は Creature を持たない場所から `deriveGeneticReportOf` を呼ぶ。
+   *   ここが本編の `deriveGeneticReport` とずれると、
+   *   「カードの裏で次世代を設計する」という体験そのものが嘘になる。
+   */
+  it('Genotype から直接引いたレポートは、本編のレポートと一致する', () => {
+    const state = newGame('report-of');
+    for (let i = 0; i < 12; i++) {
+      const c = pushAdult(state, randomGenotype(`report-of-${i}`));
+      expect(deriveGeneticReportOf(c.genotype, c.seed)).toEqual(deriveGeneticReport(c));
+    }
   });
 
   it('カード用の要約にも、本編と同じフレーバーが載る', () => {

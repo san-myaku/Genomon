@@ -55,9 +55,12 @@ import {
   CARD_FINISHES,
   CARD_FINISH_BY_ID,
   CARD_GRADES,
+  DEFAULT_DESIGN,
   deriveCardFacts,
+  resolveFinish,
   type CardDesign,
   type CardFinish,
+  type CardFinishChoice,
   type CardGrade,
   type CardQuality,
 } from './cardModel.ts';
@@ -68,6 +71,16 @@ import {
   type CardVisuals,
   type MountedCard,
 } from './cardDesign.ts';
+import { deriveGeneticReportOf } from '../game/grading.ts';
+import { deriveLabHistory } from './cardHistory.ts';
+import {
+  CARD_RANKS,
+  CARD_RANK_BY_ID,
+  resolveRank,
+  type CardRank,
+  type RankTreatment,
+  type SealMaterial,
+} from './cardRarity.ts';
 import { installCardStyles } from './cardStyles.ts';
 import {
   addSavedCard,
@@ -85,8 +98,18 @@ import {
 interface CardPrefs {
   seed: string;
   design: CardDesign;
-  finish: CardFinish;
+  /** 'auto' なら段（rarity）が仕上げを決める。 */
+  finish: CardFinishChoice;
   grade: CardGrade;
+  /**
+   * 希少度の強制表示（§19）。
+   *
+   * **見た目だけのオーバーライド**で、遺伝データには一切触れない。
+   * 同じ個体で STANDARD 〜 MYTHIC の加工差を見比べるためだけにある。
+   */
+  rarity: CardRank | 'auto';
+  /** 認証印の素材。'auto' なら段が決める。 */
+  seal: SealMaterial | 'auto';
   /** 素体の強制（''＝指定なし）。Visual Lab と同じ発想。 */
   base: BodyBase | '';
   /** 配色ファミリーの強制（''＝指定なし）。 */
@@ -110,9 +133,12 @@ interface CardPrefs {
 
 const DEFAULTS: CardPrefs = {
   seed: 'GENOMON-CARD',
-  design: 'certified',
-  finish: 'prism',
+  // 既定は Collector v2（§4）。ここを変えると `tests/cards.test.ts` が落ちる。
+  design: DEFAULT_DESIGN,
+  finish: 'auto',
   grade: 9,
+  rarity: 'auto',
+  seal: 'auto',
   base: '',
   palette: '',
   force: true,
@@ -142,11 +168,28 @@ const CMP_MAX = 6;
  */
 const NARROW_PX = 900;
 
-/** デッキバーの「箔をかえる」が回す順番。主要 8 種だけ。 */
-const CYCLE_FINISHES: readonly CardFinish[] = CARD_FINISHES.filter((f) => f.core).map((f) => f.id);
+/**
+ * デッキバーの「箔をかえる」が回す順番。
+ * 先頭は AUTO（段が決める）。既定の見えかたへ 1 タップで戻れるようにする。
+ */
+const CYCLE_FINISHES: readonly CardFinishChoice[] = [
+  'auto',
+  ...CARD_FINISHES.filter((f) => f.core).map((f) => f.id),
+];
 
 /** 履歴に残すカードの枚数。めくり戻せれば十分なので上限は控えめ。 */
 const HISTORY_MAX = 80;
+
+/**
+ * 比較・一覧を作り直すまでの待ち時間。
+ *
+ * 【220ms では PC で「次々に」めくれなかった — 実測】
+ *   PC は折りたたみが全部開いているので、1 枚めくるたびに 23 枚を作り直す。
+ *   220ms は人が連続で押す間隔（300ms 前後）より短いため **1 タップごとに
+ *   full の再構築が走り**、5 連打が 1500ms のはずのところ 2687ms かかっていた。
+ *   手が止まってから追いつけば十分なので、連打を 1 回にまとめられる長さにする。
+ */
+const SETTLE_MS = 500;
 
 const isNarrow = (): boolean => window.innerWidth < NARROW_PX;
 
@@ -182,7 +225,16 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
   let trailAt = -1;
 
   /** 畳んである比較・一覧が、開いたときに作り直す必要があるか。 */
-  const stale = { finish: true, design: true, gallery: true };
+  const stale = { rarity: true, finish: true, design: true, gallery: true };
+
+  /** Showcase に出ているカード（裏返しの制御に使う）。 */
+  let showcaseCard: MountedCard | null = null;
+  /**
+   * Showcase をどちらの面で出しているか。
+   * 再描画のたびに表へ戻さないよう、画面の状態としてここに持つ
+   * （保存はしない ── 開き直したときは表から始めたい）。
+   */
+  let face: 'front' | 'back' = 'front';
 
   const persist = (): void => saveCardPrefs(st);
 
@@ -204,12 +256,34 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     security: st.security,
   });
 
-  function cardSpecOf(sp: Specimen, design: CardDesign, finish: CardFinish, quality: CardQuality): CardSpec {
+  /**
+   * その個体の段。`st.rarity` が 'auto' 以外なら強制表示だが、
+   * **`sp.pheno` も `sp.genotype` も触らない**（§19）。
+   */
+  function rankOf(sp: Specimen, override: CardRank | 'auto' = st.rarity): RankTreatment {
+    return resolveRank(sp.pheno.rarity.score, override, sp.seed);
+  }
+
+  function cardSpecOf(
+    sp: Specimen,
+    design: CardDesign,
+    quality: CardQuality,
+    opts: { finish?: CardFinishChoice; rank?: RankTreatment; flippable?: boolean } = {},
+  ): CardSpec {
+    const rank = opts.rank ?? rankOf(sp);
+    const choice = opts.finish ?? st.finish;
     return {
       pheno: sp.pheno,
+      genotype: sp.genotype,
       facts: deriveCardFacts(sp.pheno, st.grade),
+      history: deriveLabHistory(sp.seed, rank.def.id),
+      // 本編と同じ計算。表の 1 行要約と裏面の図表が同じ数字を指すよう、
+      // 1 枚につきここで 1 回だけ計算する（実測 0.15ms/件）。
+      report: deriveGeneticReportOf(sp.genotype, sp.seed),
+      rank,
       design,
-      finish,
+      finish: resolveFinish(choice, rank.def.id),
+      finishFromRank: choice === 'auto',
       quality,
       creatureSvg: drawSpecimen(sp.model, {
         background: null,
@@ -218,6 +292,8 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
         height: '100%',
       }),
       visuals: visuals(),
+      sealStyle: st.seal,
+      flippable: opts.flippable ?? false,
     };
   }
 
@@ -226,12 +302,13 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     into: HTMLElement,
     sp: Specimen,
     design: CardDesign,
-    finish: CardFinish,
     quality: CardQuality,
-  ): void {
-    const m = mountCard(cardSpecOf(sp, design, finish, quality));
+    opts: { finish?: CardFinishChoice; rank?: RankTreatment; flippable?: boolean } = {},
+  ): MountedCard {
+    const m = mountCard(cardSpecOf(sp, design, quality, opts));
     into.appendChild(m.element);
     live.push(m);
+    return m;
   }
 
   function clearLive(): void {
@@ -341,29 +418,70 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       return;
     }
 
-    place(box, current, st.design, st.finish, 'full');
+    showcaseCard = place(box, current, st.design, 'full', { flippable: true });
+    // 直前に裏を見ていたなら、めくり直さずに裏のまま出す
+    // （設定をいじるたびに表へ戻ると、裏面の調整ができない）。
+    if (face === 'back') showcaseCard.flip('back');
 
     const facts = deriveCardFacts(current.pheno, st.grade);
+    const rank = rankOf(current);
+    const finish = resolveFinish(st.finish, rank.def.id);
     const pos = trail.length > 1 ? ` <span class="cards-count">${trailAt + 1}/${trail.length}</span>` : '';
     setHtml(
       cap,
-      `<b>${esc(cardTitle(facts, st.design, st.finish))}</b>${pos}<br>` +
+      `<b>${esc(cardTitle(facts, st.design, finish))}</b>${pos}<br>` +
         `<span class="cards-cap-sub">seed <code>${esc(current.seed)}</code> · ${esc(facts.certId)} · ` +
-        `${esc(facts.baseLabel)}・${esc(facts.paletteLabel)} · rarity ${facts.rarityScore.toFixed(1)}` +
-        `（${esc(facts.rarityLabel)}）</span>` +
-        `<span class="cards-cap-tip">タップで拡大鑑賞／左右スワイプでめくる</span>` +
+        `${esc(facts.baseLabel)}・${esc(facts.paletteLabel)} · ` +
+        // 【強制表示していることを必ず書く】
+        //   カードの数字だけを見ると本当の希少度と取り違える。
+        //   実データは何だったのかを、必ず並べて出す。
+        (rank.forced
+          ? `<b class="warn">強制 ${esc(rank.def.label)}</b>（実データ ${rank.trueScore.toFixed(1)} ／ ` +
+            `${esc(CARD_RANK_BY_ID[resolveRank(rank.trueScore, 'auto', current.seed).def.id].label)}）`
+          : `rarity ${rank.score.toFixed(1)}（${esc(rank.def.label)}）`) +
+        `</span>` +
+        `<span class="cards-cap-tip">タップ／Enter で裏返す・左右スワイプでめくる</span>` +
         (current.issues.length
           ? `<br><span class="warn">自動検査: ${esc(current.issues.join(' / '))}</span>`
           : ''),
     );
   }
 
-  // ── Finish 比較 ──────────────────────────────────────
+  // ── 段（rarity）比較 ─────────────────────────────────
 
   /** 畳んである間は作らない。開いたときに `onToggle` が呼び直す。 */
   function foldOpen(id: string): boolean {
     return $<HTMLDetailsElement>(id, host)?.open ?? false;
   }
+
+  /**
+   * 同じ個体を 5 段ぶん並べる。**この Lab でいちばん大事な比較**（§18）。
+   *
+   * 「STANDARD → MYTHIC と並べたとき、MYTHIC を見て本当に欲しくなるか」
+   * が今回の完成条件（§31）なので、その判断が 1 画面でできる場所を作る。
+   * ここでの強制は視覚だけ（`resolveRank` の forced 側）で、
+   * 遺伝データも Phenotype も変わらない。
+   */
+  function renderRarityCmp(): void {
+    const strip = $('#cards-cmp-rarity', host);
+    if (!strip || !current) return;
+    if (!foldOpen('#cards-fold-rarity')) {
+      stale.rarity = true;
+      return;
+    }
+    stale.rarity = false;
+    strip.dataset.bg = st.bg;
+    strip.innerHTML = '';
+    const real = rankOf(current, 'auto').def.id;
+    for (const def of CARD_RANKS) {
+      const slot = slotButton(def.id === real ? `${def.label}（実データ）` : def.label, def.id === st.rarity);
+      slot.dataset.rarity = def.id;
+      strip.appendChild(slot);
+      place(slotBody(slot), current, st.design, 'medium', { rank: rankOf(current, def.id) });
+    }
+  }
+
+  // ── Finish 比較 ──────────────────────────────────────
 
   function renderFinishCmp(): void {
     const strip = $('#cards-cmp-finish', host);
@@ -379,7 +497,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       const slot = slotButton(CARD_FINISH_BY_ID[fin].label, fin === st.finish);
       slot.dataset.finish = fin;
       strip.appendChild(slot);
-      place(slotBody(slot), current, st.design, fin, 'medium');
+      place(slotBody(slot), current, st.design, 'medium', { finish: fin });
     }
   }
 
@@ -396,10 +514,10 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     strip.dataset.bg = st.bg;
     strip.innerHTML = '';
     for (const d of CARD_DESIGNS) {
-      const slot = slotButton(d.label, d.id === st.design);
+      const slot = slotButton(d.legacy ? `${d.label}（旧）` : d.label, d.id === st.design);
       slot.dataset.design = d.id;
       strip.appendChild(slot);
-      place(slotBody(slot), current, d.id, st.finish, 'medium');
+      place(slotBody(slot), current, d.id, 'medium');
     }
   }
 
@@ -430,13 +548,13 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       slot.style.setProperty('--slot-w', '100%');
       slot.dataset.seed = sp.seed;
       grid.appendChild(slot);
-      place(slotBody(slot), sp, st.design, st.finish, 'lite');
+      place(slotBody(slot), sp, st.design, 'lite');
     }
     const note = $('#cards-gallery-note', host);
     if (note) {
       note.textContent =
-        `${found} 体（${CARD_DESIGN_BY_ID[st.design].label} × ${CARD_FINISH_BY_ID[st.finish].label}）。` +
-        `タップで Showcase へ送ります。一覧は静止表示（tilt / depth なし）です。`;
+        `${found} 体（${CARD_DESIGN_BY_ID[st.design].label} × ${finishLabel()}）。` +
+        `タップで Showcase へ送ります。一覧は静止表示・表面のみ（tilt / depth / 裏面なし）です。`;
     }
   }
 
@@ -476,7 +594,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     addSavedCard({
       seed: current.seed,
       design: st.design,
-      finish: st.finish,
+      finish: resolveFinish(st.finish, rankOf(current).def.id),
       grade: st.grade,
       visuals: visuals(),
       bg: st.bg,
@@ -501,6 +619,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     if (rebuild) rebuildSpecimen();
     clearLive();
     renderShowcase();
+    renderRarityCmp();
     renderFinishCmp();
     renderDesignCmp();
     renderGallery();
@@ -512,12 +631,21 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     window.clearTimeout(settleTimer);
     settleTimer = window.setTimeout(() => {
       if (disposed) return;
+      clearLiveIn('#cards-cmp-rarity');
       clearLiveIn('#cards-cmp-finish');
       clearLiveIn('#cards-cmp-design');
+      renderRarityCmp();
       renderFinishCmp();
       renderDesignCmp();
       renderGallery();
-    }, 220);
+    }, SETTLE_MS);
+  }
+
+  /** 仕上げの表示名。'auto' のときは、いま実際に選ばれている効果も添える。 */
+  function finishLabel(): string {
+    if (st.finish !== 'auto') return CARD_FINISH_BY_ID[st.finish].label;
+    if (!current) return 'AUTO';
+    return `AUTO（${CARD_FINISH_BY_ID[resolveFinish('auto', rankOf(current).def.id)].label}）`;
   }
 
   function syncControls(): void {
@@ -529,12 +657,38 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     }
     const designNote = $('#cards-design-note', host);
     if (designNote) designNote.textContent = CARD_DESIGN_BY_ID[st.design].note;
+    const rarityNote = $('#cards-rarity-note', host);
+    if (rarityNote) {
+      rarityNote.textContent =
+        st.rarity === 'auto'
+          ? '実データ（pheno.rarity.score）から段を決めます。'
+          : `${CARD_RANK_BY_ID[st.rarity].note}　※見た目だけの強制。遺伝データは変わりません。`;
+    }
     const deckDesign = $('#cards-deck-design', host);
     if (deckDesign) deckDesign.textContent = CARD_DESIGN_BY_ID[st.design].label;
     const deckFinish = $('#cards-deck-finish', host);
-    if (deckFinish) deckFinish.textContent = CARD_FINISH_BY_ID[st.finish].label;
-    const back = $<HTMLButtonElement>('[data-act="prev"]', host);
-    if (back) back.disabled = trailAt <= 0;
+    // デッキは幅が足りない（AUTO（Standard）で 122px 占めていた）。短い方を出す。
+    if (deckFinish) {
+      deckFinish.textContent = st.finish === 'auto' ? 'AUTO' : CARD_FINISH_BY_ID[st.finish].label;
+    }
+    const deckFace = $('#cards-deck-face', host);
+    if (deckFace) deckFace.textContent = face === 'back' ? '裏' : '表';
+    for (const b of $$<HTMLElement>('[data-act="flip"]', host)) {
+      b.setAttribute('aria-pressed', face === 'back' ? 'true' : 'false');
+    }
+    // 「戻る」はカードの下とデッキバーの 2 か所に出る。$ は先頭しか返さないので
+    // $$ で全部そろえる（片方だけ押せる状態が残ると、押しても何も起きない）。
+    for (const back of $$<HTMLButtonElement>('[data-act="prev"]', host)) {
+      back.disabled = trailAt <= 0;
+    }
+  }
+
+  /** 表 ↔ 裏。裏面はここで初めて作られる（mountCard の遅延生成）。 */
+  function flipShowcase(): void {
+    if (!showcaseCard) return;
+    showcaseCard.flip();
+    face = showcaseCard.face();
+    syncControls();
   }
 
   // ── 入力 ─────────────────────────────────────────────
@@ -551,20 +705,45 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     deps.toast(`版面: ${next.label}`, 'info');
   }
 
+  /**
+   * デッキの「箔」を 1 タップ進める。
+   *
+   * 【同じ効果に着地する候補は飛ばす】
+   *   AUTO は段が決めるので、STANDARD の個体では AUTO も 'standard' も
+   *   同じ効果になる。素直に次へ進めると **1 タップ押しても何も変わらない**
+   *   （デッキの主目的は「押したら変わる」こと）。実際に着地する effect が
+   *   変わるまで進める。
+   */
   function cycleFinish(): void {
+    const cur = current ? resolveFinish(st.finish, rankOf(current).def.id) : null;
     const i = CYCLE_FINISHES.indexOf(st.finish);
-    const next = CYCLE_FINISHES[(i + 1) % CYCLE_FINISHES.length]!;
+    let next = CYCLE_FINISHES[(i + 1) % CYCLE_FINISHES.length]!;
+    for (let step = 1; step < CYCLE_FINISHES.length && current && cur; step++) {
+      const cand = CYCLE_FINISHES[(i + step) % CYCLE_FINISHES.length]!;
+      if (resolveFinish(cand, rankOf(current).def.id) !== cur) {
+        next = cand;
+        break;
+      }
+    }
     st.finish = next;
     persist();
     renderLight();
     syncControls();
     settle();
-    deps.toast(`仕上げ: ${CARD_FINISH_BY_ID[next].label}`, 'info');
+    deps.toast(`仕上げ: ${finishLabel()}`, 'info');
   }
 
   const onClick = (ev: Event): void => {
     const t = ev.target as HTMLElement | null;
     if (!t) return;
+
+    // カードそのものを押して裏返した場合。めくる処理は mountCard 側が持って
+    // いるので、ここでは画面の状態（どちらの面か）を追いつかせるだけ。
+    if (showcaseCard && t.closest('.gmc-flip-inner')) {
+      face = showcaseCard.face();
+      syncControls();
+      return;
+    }
 
     const setter = t.closest<HTMLElement>('[data-set]');
     if (setter) {
@@ -590,7 +769,16 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
     const slot = t.closest<HTMLElement>('.cards-slot');
 
     if (!act && slot) {
-      if (slot.dataset.finish) {
+      if (slot.dataset.rarity) {
+        // 比較で押した段を Showcase へ送る。もう一度押すと AUTO へ戻す
+        // （実データの見えかたへ帰れないと、比較が「戻れない道」になる）。
+        const picked = slot.dataset.rarity as CardRank;
+        st.rarity = st.rarity === picked ? 'auto' : picked;
+        persist();
+        renderLight();
+        syncControls();
+        settle();
+      } else if (slot.dataset.finish) {
         st.finish = slot.dataset.finish as CardFinish;
         persist();
         renderLight();
@@ -631,6 +819,9 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
         break;
       case 'cycle-finish':
         cycleFinish();
+        break;
+      case 'flip':
+        flipShowcase();
         break;
       case 'regen':
         renderAll(true);
@@ -730,7 +921,11 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
   const onToggle = (ev: Event): void => {
     const d = ev.target;
     if (!(d instanceof HTMLDetailsElement)) return;
-    if (d.id === 'cards-fold-finish') {
+    if (d.id === 'cards-fold-rarity') {
+      if (d.open) {
+        if (stale.rarity) renderRarityCmp();
+      } else clearLiveIn('#cards-cmp-rarity');
+    } else if (d.id === 'cards-fold-finish') {
       if (d.open) {
         if (stale.finish) renderFinishCmp();
       } else clearLiveIn('#cards-cmp-finish');
@@ -742,6 +937,44 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       if (d.open) {
         if (stale.gallery) renderGallery();
       } else clearLiveIn('#cards-gallery');
+    }
+  };
+
+  /**
+   * キーボードでめくる（PC の主動線）。
+   *
+   * 【なぜ要るか】
+   *   スマホには画面下のデッキバーと左右スワイプがあるが、PC では
+   *   「つぎのカード」が設定パネルの中にしか無く、カードから目を離して
+   *   左端まで狙う必要があった。**次々に見る**のがこの Lab の使いかたなので、
+   *   手を動かさずに送れる経路を用意する。
+   *
+   * 【文字入力を奪わない】
+   *   seed を打っている最中に矢印キーを取ると、カーソル移動ができなくなる。
+   *   入力欄・選択肢・別タブ表示中は必ず素通しする。
+   */
+  const onKeyDown = (ev: KeyboardEvent): void => {
+    if (ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (host.hidden) return;
+    const el = document.activeElement as HTMLElement | null;
+    if (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement ||
+      el?.isContentEditable
+    ) {
+      return;
+    }
+
+    if (ev.key === 'ArrowRight') {
+      ev.preventDefault();
+      nextCard();
+    } else if (ev.key === 'ArrowLeft') {
+      ev.preventDefault();
+      prevCard();
+    } else if (ev.key === 'f' || ev.key === 'F') {
+      ev.preventDefault();
+      flipShowcase();
     }
   };
 
@@ -810,6 +1043,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerUp);
   window.addEventListener('resize', onResize);
+  window.addEventListener('keydown', onKeyDown);
 
   pushTrail(normalizeSeed(st.seed));
   renderAll(true);
@@ -827,6 +1061,7 @@ export function mountCardLab(host: HTMLElement, deps: LabDeps): Mounted {
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('keydown', onKeyDown);
       clearLive();
     },
   };
@@ -926,17 +1161,47 @@ function shell(st: CardPrefs, reducedMotion: boolean, narrow: boolean): string {
 
     `<div class="card"><h2>Design</h2>` +
     `<div class="row">` +
-    seg('design', CARD_DESIGNS.map((d) => ({ v: d.id, label: d.label }))) +
+    seg('design', CARD_DESIGNS.map((d) => ({ v: d.id, label: d.legacy ? `${d.label}（旧）` : d.label }))) +
     `</div>` +
     `<p class="hint" id="cards-design-note">${esc(CARD_DESIGN_BY_ID[st.design].note)}</p>` +
     `</div>` +
 
+    // ── 段（rarity）──
+    //   AUTO は実データ。強制は **見た目だけ** のオーバーライドで、
+    //   遺伝データにも Phenotype にも触らない（§19）。
+    `<div class="card"><h2>Rarity</h2>` +
+    `<div class="row">` +
+    seg('rarity', [
+      { v: 'auto', label: 'AUTO' },
+      ...CARD_RANKS.map((r) => ({ v: r.id, label: r.label })),
+    ]) +
+    `</div>` +
+    `<p class="hint" id="cards-rarity-note"></p>` +
+    `<p class="hint">強制しても遺伝データは変わりません（カード面の見た目だけ）。実データは説明文に併記します。</p>` +
+    `</div>` +
+
     `<div class="card"><h2>Finish</h2>` +
     `<div class="row"><label class="f grow">仕上げ<select data-bind="finish" class="grow">` +
+    `<option value="auto"${st.finish === 'auto' ? ' selected' : ''}>AUTO（段が決める）</option>` +
     `<optgroup label="主要">${finishOptions(true)}</optgroup>` +
     `<optgroup label="その他">${finishOptions(false)}</optgroup>` +
     `</select></label></div>` +
-    `<p class="hint">箔は foil マスクで枠・ロゴ・Grade・罫線だけに掛かります（Collector だけ個体の周りも光ります）。</p>` +
+    `<p class="hint">箔は foil マスクで枠・ロゴ・段の帯・認証印だけに掛かります。Collector v2 では、` +
+    `どこに掛かるかを段そのものが決めます（STANDARD は箔ゼロ）。</p>` +
+    `</div>` +
+
+    `<div class="card"><h2>認証印</h2>` +
+    `<div class="row">` +
+    seg('seal', [
+      { v: 'auto', label: 'AUTO' },
+      { v: 'ink', label: 'インク' },
+      { v: 'inkFoil', label: '縁だけ箔' },
+      { v: 'silver', label: '銀箔' },
+      { v: 'gold', label: '金箔' },
+      { v: 'holo', label: 'ホロ箔' },
+    ]) +
+    `</div>` +
+    `<p class="hint">紙に押したインク → 箔押し → ホロ箔押し。素材そのものが格を語ります。</p>` +
     `</div>` +
 
     `<div class="card"><h2>Grade</h2>` +
@@ -979,7 +1244,31 @@ function shell(st: CardPrefs, reducedMotion: boolean, narrow: boolean): string {
     `<div class="cards-showcase" id="cards-showcase" style="--cards-showcase-w:${st.showcaseW}px"></div>` +
     `</div>` +
     `<p class="cards-caption" id="cards-caption"></p>` +
+    // 【カードの真下に「つぎ」を置く（PC の主動線）】
+    //   スマホのデッキバーと同じ並びを、固定バーではなくカードの直下へ置く。
+    //   設定パネルの中にしか「つぎのカード」が無かったので、
+    //   PC では毎回カードから目を離して左端まで狙う必要があった。
+    //   狭い画面ではデッキバーが同じ役割を担うので、この列は出さない。
+    `<div class="cards-deal">` +
+    `<button type="button" data-act="prev" aria-label="前のカードへ戻る">◀</button>` +
+    `<button type="button" class="primary cards-deal-main" data-act="next">つぎのカード</button>` +
+    `<button type="button" data-act="flip" aria-pressed="false">表 ／ 裏</button>` +
+    `<button type="button" class="cards-deal-save" data-act="save-quick" ` +
+    `aria-label="このカードを保存">♥</button>` +
+    `<span class="hint cards-deal-keys">` +
+    `<kbd>←</kbd> <kbd>→</kbd> でめくる・<kbd>F</kbd> で裏返す（カード本体をクリックでも裏返ります）` +
+    `</span>` +
     `</div>` +
+    `</div>` +
+
+    fold(
+      'cards-fold-rarity',
+      '段の比較（同じ個体・STANDARD → MYTHIC）',
+      `<div class="cards-strip" id="cards-cmp-rarity" data-bg="${esc(st.bg)}"></div>` +
+        `<p class="hint">見た目だけの強制です。遺伝データは変わりません。` +
+        `タップでその段を Showcase へ送り、もう一度押すと AUTO（実データ）へ戻します。</p>`,
+      !narrow,
+    ) +
 
     fold(
       'cards-fold-finish',
@@ -1020,7 +1309,9 @@ function shell(st: CardPrefs, reducedMotion: boolean, narrow: boolean): string {
     `<button type="button" class="cards-deck-btn cards-deck-swap" data-act="cycle-design" aria-label="版面をかえる">` +
     `<i>版面</i><b id="cards-deck-design">${esc(CARD_DESIGN_BY_ID[st.design].label)}</b></button>` +
     `<button type="button" class="cards-deck-btn cards-deck-swap" data-act="cycle-finish" aria-label="仕上げをかえる">` +
-    `<i>箔</i><b id="cards-deck-finish">${esc(CARD_FINISH_BY_ID[st.finish].label)}</b></button>` +
+    `<i>箔</i><b id="cards-deck-finish">${st.finish === 'auto' ? 'AUTO' : esc(CARD_FINISH_BY_ID[st.finish].label)}</b></button>` +
+    `<button type="button" class="cards-deck-btn cards-deck-swap" data-act="flip" aria-label="カードを裏返す" aria-pressed="false">` +
+    `<i>面</i><b id="cards-deck-face">表</b></button>` +
     `<button type="button" class="cards-deck-btn cards-deck-save" data-act="save-quick" aria-label="このカードを保存">♥</button>` +
     `</div>`
   );
